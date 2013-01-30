@@ -2,8 +2,9 @@ import sys
 import commands
 import re
 import os
+import shutil
 
-from cogent.db.ensembl import Species
+from cogent.db.ensembl import Species, Genome
 
 class EnsemblCache(object) :
     def __init__(self, workingdir, tmpdir) :
@@ -59,21 +60,23 @@ class EnsemblCache(object) :
                 print Species.getCommonName(name).rjust(20), 
                 print db2rel.get(dbprefix, "???").rjust(12)
 
-    def _check_directory(self, dirname, create=False) :
+    def _check_directory(self, dirname, create=False, silent=False) :
         if not os.path.exists(dirname) :
             if create :
-                print >> sys.stderr, "Info: '%s' does not exist, creating..." % dirname
+                #print >> sys.stderr, "Info: '%s' does not exist, creating..." % dirname
                 try :
                     os.makedirs(dirname)
                 except OSError, ose :
                     print >> sys.stderr, str(ose)
                     return False
             else :
-                print >> sys.stderr, "Error: '%s' does not exist." % dirname
+                if not silent :
+                    print >> sys.stderr, "Error: '%s' does not exist." % dirname
                 return False
 
         elif not os.path.isdir(dirname) :
-            print >> sys.stderr, "Error: '%s' exists, but is not a directory!" % tmp
+            if not silent :
+                print >> sys.stderr, "Error: '%s' exists, but is not a directory!" % tmp
             return False
 
         else :
@@ -88,7 +91,25 @@ class EnsemblCache(object) :
 
         return tmp
 
+    def _kill_cache(self, species, release) :
+        tmp = self.workingdir + os.sep + str(release)
+        if self._check_directory(tmp, silent=True) :
+            tmp += (os.sep + Species.getCommonName(species))
+            if self._check_directory(tmp, silent=True) :
+                shutil.rmtree(tmp, ignore_errors=True)
+            
+
     def build_cache(self, species, release, resume=True) :
+
+        if not resume :
+            self._kill_cache(species, release)
+
         basedir = self._check_cache_directory(species, release)
 
         print basedir
+
+        # I need :
+        #   gene symbol (single column, all gene names)
+        #   protein sequence (one per file)
+        #   paralogs (other gene symbols)
+

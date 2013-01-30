@@ -15,7 +15,8 @@ def get_default_options() :
             'release'    : None,
             'list'       : None,
             'workingdir' : "cache",
-            'tmpdir'     : os.environ.get('TMPDIR', "/tmp")
+            'tmpdir'     : os.environ.get('TMPDIR', "/tmp"),
+            'resume'     : False
            }
 
 def clean_up() :
@@ -37,10 +38,11 @@ def usage() :
     -r      --release='release'     (no default)
     -w      --workingdir='dir'      (default = %s)
     -t      --tmpdir='dir'          (default = %s)
+    -a      --resume                (default = %s)
     -l      --list
     -v      --verbose
     -h      --help
-""" % (sys.argv[0], options['workingdir'], options['tmpdir'])
+""" % (sys.argv[0], options['workingdir'], options['tmpdir'], options['resume'])
 
 def expect_int(parameter, argument) :
     try :
@@ -57,7 +59,7 @@ def parse_args() :
     try :
         opts,args = getopt.getopt(
                         sys.argv[1:],
-                        "s:r:hvlw:t:",
+                        "s:r:hvlw:t:a",
                         [   
                             "species=", 
                             "relsease=",
@@ -65,7 +67,8 @@ def parse_args() :
                             "tmpdir=",
                             "list",
                             "verbose", 
-                            "help" 
+                            "help",
+                            "resume"
                         ]
                     )
 
@@ -97,6 +100,9 @@ def parse_args() :
         elif o in ('-r', '--release') :
             options['release'] = expect_int("release", a)
 
+        elif o in ('-a', '--resume') :
+            options['resume'] = True
+
         else :
             assert False, "unhandled option %s" % o
 
@@ -114,7 +120,7 @@ def main() :
         ensembl.print_species_table()
         sys.exit(0)
 
-    ensembl.build_cache(options['species'], options['release'], resume=True)
+    ensembl.build_cache(options['species'], options['release'], resume=options['resume'])
 
 if __name__ == '__main__' :
     main()
