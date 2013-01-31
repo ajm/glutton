@@ -23,11 +23,11 @@ def clean_up() :
     global ensembl
 
     if ensembl :
-        ensembl.stop()
+        ensembl.shutdown()
     else :
         sys.exit(-1)
 
-def handler_sigterm(signal, frame) :
+def handler_sigint(signal, frame) :
     clean_up()
 
 def usage() :
@@ -111,7 +111,7 @@ def parse_args() :
 def main() :
     global ensembl
 
-    signal.signal(signal.SIGINT, handler_sigterm)
+    signal.signal(signal.SIGINT, handler_sigint)
     options = parse_args()
     
     ensembl = EnsemblCache(options['workingdir'], options['tmpdir'])
