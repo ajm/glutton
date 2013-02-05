@@ -3,10 +3,9 @@ import os
 import getopt
 import signal
 
-from ensembl.cache import EnsemblCache
+from lib.cache import TranscriptCache, EnsemblInfo
 
-
-ensembl = None
+cache = None
 
 def get_default_options() :
     return {
@@ -20,10 +19,10 @@ def get_default_options() :
            }
 
 def clean_up() :
-    global ensembl
+    global cache
 
-    if ensembl :
-        ensembl.shutdown()
+    if cache :
+        cache.shutdown()
     else :
         sys.exit(-1)
 
@@ -109,19 +108,21 @@ def parse_args() :
     return options
 
 def main() :
-    global ensembl
+    global cache
 
     signal.signal(signal.SIGINT, handler_sigint)
     options = parse_args()
-    
-    ensembl = EnsemblCache(options['workingdir'], options['tmpdir'])
 
     if options['list'] :
-        ensembl.print_species_table()
-        sys.exit(0)
+        ei = EnsemblInfo()
+        ei.print_species_table()
+        return 0
 
-    ensembl.build_cache(options['species'], options['release'], resume=options['resume'])
+    cache = TranscriptCache(options['workingdir'], options['tmpdir'], options['species'], options['release'])
+    cache.build(resume=options['resume'])
+
+    return 0
 
 if __name__ == '__main__' :
-    main()
+    sys.exit(main())
 
