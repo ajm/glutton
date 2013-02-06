@@ -5,26 +5,84 @@ import signal
 
 from lib.cache import TranscriptCache, EnsemblInfo
 
+
 cache = None
+
+databases = {'ensembl' : { 
+                'db-host' : 'ensembldb.ensembl.org', 
+                'db-port' : 5306,
+                'db-user' : 'anonymous',
+                'db-pass' : '' },
+             'ensembl-metazoa' : {
+                'db-host' : 'mysql.ebi.ac.uk',
+                'db-port' : 4157,
+                'db-user' : 'anonymous',
+                'db-pass' : '' }
+             }
 
 def get_default_options() :
     return {
-            'verbose'    : False,
+            'database'   : 'ensembl',
             'species'    : None,
             'release'    : None,
             'list'       : None,
-            'workingdir' : "cache",
-            'tmpdir'     : os.environ.get('TMPDIR', "/tmp"),
-            'resume'     : False
+            'workingdir' : os.path.join(os.getcwd(), 'cache'),
+            'tmpdir'     : os.environ.get('tmpdir', '/tmp'),
+            'resume'     : False,
+            'verbose'    : False,
+            'db-host'    : None,
+            'db-port'    : None,
+            'db-user'    : None,
+            'db-pass'    : None
            }
+
+def predefined_databases() :
+    global databases
+    return ', '.join(map(lambda x : "'%s'" % x, databases.keys()))
+
+def fill_in_database_info(options) :
+    global databases
+
+    try :
+        options.update(databases[options['database']])
+
+    except KeyError, ke :
+        print >> sys.stderr, "Error: '%s' is not a valid database string, valid strings are : %s" % \
+                (options['database'], ' '.join(databases.keys()))
+        sys.exit(-1)
+
+def parse_database_string(db_string, options) :
+    db_fields = db_string.split(',')
+
+    if len(db_fields) != 4 :
+        print >> sys.stderr, "Error: '%s' is an invalid database string, valid strings are in the form hostname,port,username,password" % db_string
+        sys.exit(-1)
+
+    # host, port, username, password
+    try :
+        db_fields[1] = int(db_fields[1])
+
+    except ValueError, ve :
+        print >> sys.stderr, "Error: %s is not a valid port number" % db_fields[1]
+        sys.exit(-1)
+
+    options['db-host'] = db_fields[0]
+    options['db-port'] = db_fields[1]
+    options['db-user'] = db_fields[2]
+    options['db-pass'] = db_fields[3]
+    options['database'] = 'user-defined'
 
 def clean_up() :
     global cache
 
     if cache :
-        cache.shutdown()
-    else :
-        sys.exit(-1)
+        if not cache.stop :
+            cache.stop = True
+            print >> sys.stderr, "\n[!] Application will shutdown after the next gene family is downloaded or user types '^C' again...\n"
+            return
+
+    print >> sys.stderr, "\n[!] Forced exit from user..."
+    sys.exit(0)
 
 def handler_sigint(signal, frame) :
     clean_up()
@@ -33,15 +91,18 @@ def usage() :
     options = get_default_options()
 
     print >> sys.stderr, """Usage: %s [OPTIONS]
-    -s      --species='species'     (no default)
-    -r      --release='release'     (no default)
+    -d      --database='db string'  (default = '%s', valid arguments : %s)
+    -s      --species='species'     (no default, see output of --list for options)
+    -r      --release='release'     (no default, see output of --list for options)
     -w      --workingdir='dir'      (default = %s)
     -t      --tmpdir='dir'          (default = %s)
     -a      --resume                (default = %s)
     -l      --list
+    -x      --specify-db='db info'  ('db info' is comma separated host, port, username, password)
     -v      --verbose
     -h      --help
-""" % (sys.argv[0], options['workingdir'], options['tmpdir'], options['resume'])
+""" % (sys.argv[0], options['database'], predefined_databases(),
+        options['workingdir'], options['tmpdir'], options['resume'])
 
 def expect_int(parameter, argument) :
     try :
@@ -53,12 +114,14 @@ def expect_int(parameter, argument) :
         sys.exit(-1)
 
 def parse_args() :
+    global databases
+
     options = get_default_options()
 
     try :
         opts,args = getopt.getopt(
                         sys.argv[1:],
-                        "s:r:hvlw:t:a",
+                        "s:r:hvlw:t:ad:x:",
                         [   
                             "species=", 
                             "relsease=",
@@ -67,7 +130,9 @@ def parse_args() :
                             "list",
                             "verbose", 
                             "help",
-                            "resume"
+                            "resume",
+                            "database=",
+                            "specify-db="
                         ]
                     )
 
@@ -102,6 +167,16 @@ def parse_args() :
         elif o in ('-a', '--resume') :
             options['resume'] = True
 
+        elif o in ('-d', '--database') :
+            if a not in databases.keys() :
+                print >> sys.stderr, "Error: '%s' is not a predefined database, valid strings are : %s" % (a, predefined_databases())
+                sys.exit(-1)
+
+            options['database'] = a
+
+        elif o in ('-x', '--specify-db') :
+            parse_database_string(a, options)
+
         else :
             assert False, "unhandled option %s" % o
 
@@ -113,12 +188,15 @@ def main() :
     signal.signal(signal.SIGINT, handler_sigint)
     options = parse_args()
 
+    if options['database'] != 'user-defined' :
+        fill_in_database_info(options)
+
     if options['list'] :
-        ei = EnsemblInfo()
+        ei = EnsemblInfo(options)
         ei.print_species_table()
         return 0
 
-    cache = TranscriptCache(options['workingdir'], options['tmpdir'], options['species'], options['release'])
+    cache = TranscriptCache(options)
     cache.build(resume=options['resume'])
 
     return 0
