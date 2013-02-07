@@ -197,7 +197,7 @@ def main() :
         return 0
 
     cache = TranscriptCache(options)
-    cache.build(resume=options['resume'])
+    cache.build()
 
     return 0
 

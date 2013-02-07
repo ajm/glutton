@@ -2,6 +2,9 @@ import sys
 import subprocess
 import tempfile
 
+class PrankError(Exception) :
+    pass
+
 class Prank(object) :
     def __init__(self, tmpdir) :
         self.tmpdir = tmpdir
@@ -13,14 +16,12 @@ class Prank(object) :
         #command = "prank -d=%s -o=%s -translate -showtree" % (infile, outfile)
         command = ["prank", "-d=%s" % infile, "-o=%s" % outfile, "-translate", "-showtree"]
 
-        #print "\n" + ' '.join(command) + "\n"
-
         try :
             subprocess.check_call(command, stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
 
         except subprocess.CalledProcessError, cpe :
-            print >> sys.stderr, "Error: '%s' failed (%s)" % (command, str(cpe))
-            sys.exit(-1)
+            #print >> sys.stderr, "Error: '%s' failed (%s)" % (command, str(cpe))
+            raise PrankError()
 
 
         return map(lambda x: outfile + x, 
