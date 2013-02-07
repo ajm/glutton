@@ -27,7 +27,7 @@ def get_default_options() :
             'release'    : None,
             'list'       : None,
             'workingdir' : os.path.join(os.getcwd(), 'cache'),
-            'tmpdir'     : os.environ.get('tmpdir', '/tmp'),
+            'tmpdir'     : os.environ.get('TMPDIR', '/tmp'),
             'resume'     : False,
             'verbose'    : False,
             'db-host'    : None,

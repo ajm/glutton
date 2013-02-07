@@ -11,6 +11,7 @@ import glob
 import Queue
 import threading
 
+from cogent.parse.fasta import MinimalFastaParser
 from cogent.db.ensembl import Species, Genome, Compara, HostAccount
 
 from lib.progress import Progress
@@ -79,7 +80,7 @@ class EnsemblInfo(object) :
 
         for dbprefix in sorted(db2rel.keys()) :
             if dbprefix not in printed :
-                print dbprefix.rjust(32),
+                print dbprefix.capitalize().replace('_', ' ').rjust(32),
                 print "undefined".rjust(18),
                 print db2rel.get(dbprefix).rjust(12)
 
@@ -97,6 +98,8 @@ class TranscriptCache(object) :
         self.release = options['release']
         self.account = HostAccount(options['db-host'], options['db-user'], options['db-pass'], port=options['db-port'])
         self.basedir = os.path.join(self.workingdir, str(self.release), self.species)
+
+        self._is_valid_species()
 
         self._check_directory(self.tmpdir, create=True)
         self._check_directory(self.workingdir, create=True)
@@ -122,6 +125,16 @@ class TranscriptCache(object) :
 
     def shutdown(self) :
         self.stop = True
+
+    def _is_valid_species(self) :
+        try :
+            Species.getCommonName(self.species)
+            return
+
+        except :
+            pass
+
+        Species.amendSpecies(self.species, self.species)
 
     def _consume_alignment_queue(self) :
         while not self.stop :
@@ -172,12 +185,14 @@ class TranscriptCache(object) :
         # write md5 hash to the end of the manifest file
         f = open(self.manifest_name, 'a')
         print >> f, "%s %s" % (filename, manifestdata)
+        os.fsync(f)
         f.close()
 
         # write the actual file, we don't care if this gets interrupted
         # because then it will be discovered by recalculating the hash
         f = open(os.path.join(self.basedir, filename), 'w')
         f.write(filecontents)
+        os.fsync(f)
         f.close()
 
         print "Info: written %s" % filename
@@ -246,7 +261,6 @@ class TranscriptCache(object) :
     def manifest_name(self) :
         return os.path.join(self.basedir, type(self).file_manifest)
 
-    # TODO
     # verify that files match md5s in manifest
     # figure out which genes cds has been downloaded and stored
     # figure out which alignments have not been done and add to the prank queue
@@ -303,26 +317,31 @@ class TranscriptCache(object) :
         for fname in good_gene_families :
             alignment_files = map(lambda x: fname + x, [".1.dnd", ".2.dnd", ".nuc.1.fas", ".nuc.2.fas", ".pep.1.fas", ".pep.2.fas"])
             bad = False
+            reason = None
             for align_fname in alignment_files :
                 try :
                     if not self._file_md5(os.path.join(self.basedir, align_fname)) == f2md5[align_fname] :
-                        print >> sys.stderr, "Info: md5 for %s was bad, queuing for alignment..." % align_fname
+                        reason = "Info: md5 for %s was bad, queuing for alignment..." % align_fname
                         bad = True
                         break
                 
                 except IOError, ioe : # no file to open
-                    print >> sys.stderr, "Info: %s alignment files missing, queuing for alignment..." % fname
+                    reason = "Info: %s alignment files missing, queuing for alignment..." % fname
                     bad = True
                     break
 
                 except KeyError, ke : # no mention in the manifest
-                    print >> sys.stderr, "Info: md5 for %s not present in manifest, queuing for alignment..." % align_fname
+                    reason = "Info: md5 for %s not present in manifest, queuing for alignment..." % align_fname
                     bad = True
                     break
 
             if bad :
                 # TODO XXX only add to the queue if the number of sequences is >= 2
-                self._add_to_alignment_queue(fname)
+                if self._count_sequences(os.path.join(self.basedir, fname)) > 1 :
+                    print >> sys.stderr, reason
+                    self._add_to_alignment_queue(os.path.join(self.basedir, fname))
+            else :
+                good_alignments += alignment_files
 
         # rewrite manifest
         f = open(self.manifest_name, 'w')
@@ -332,6 +351,11 @@ class TranscriptCache(object) :
 
         f.close()
 
+    def _count_sequences(self, fname) :
+        count = 0
+        for label,seq in MinimalFastaParser(open(fname)) :
+            count += 1
+        return count
 
     def _random_filename(self) :
         return os.path.basename(tempfile.mktemp(prefix=type(self).file_prefix, dir=self.basedir))
@@ -344,7 +368,7 @@ class TranscriptCache(object) :
         for f in outfiles :
             self._add_to_manifest_queue(os.path.basename(f), self._contents(f), False)
 
-        print "Info: aligned sequences in %s" % infile
+        print "Info: aligned sequences in %s" % os.path.basename(infile)
 
     def build(self, resume=True) :
         if not resume :
