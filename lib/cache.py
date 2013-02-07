@@ -89,19 +89,19 @@ class TranscriptCache(object) :
     file_prefix = 'genefamily_'
     queue_timeout = 1
 
-    def __init__(self, workingdir, tmpdir, species, release) :
+    def __init__(self, options) :
         self.stop = False
         self.workingdir = options['workingdir']
         self.tmpdir = options['tmpdir']
         self.species = options['species']
         self.release = options['release']
         self.account = HostAccount(options['db-host'], options['db-user'], options['db-pass'], port=options['db-port'])
-        self.basedir = os.path.join(self.workingdir, str(release), species)
+        self.basedir = os.path.join(self.workingdir, str(self.release), self.species)
 
         self._check_directory(self.tmpdir, create=True)
         self._check_directory(self.workingdir, create=True)
-        self._check_directory(os.path.join(self.workingdir, str(release)), create=True)
-        self._check_directory(os.path.join(self.workingdir, str(release), species), create=True)
+        self._check_directory(os.path.join(self.workingdir, str(self.release)), create=True)
+        self._check_directory(os.path.join(self.workingdir, str(self.release), self.species), create=True)
 
         self.genes = set()
 
@@ -351,6 +351,12 @@ class TranscriptCache(object) :
             self._reset_cache()
         else :
             print "Info: resuming..."
+
+        # TODO XXX 'species' may not be valid if it is a database prefix and not something 
+        # in pycogent, i think it can be added with Species.amendSpecies(), but i should 
+        # check whether this is necessary first
+        #
+        # what about Compara?
 
         print "Info: enumerating gene families in %s release %d" % (self.species, self.release)
         genome = Genome(self.species, Release=self.release, account=self.account)
