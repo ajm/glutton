@@ -13,6 +13,7 @@ import threading
 
 from cogent.parse.fasta import MinimalFastaParser
 from cogent.db.ensembl import Species, Genome, Compara, HostAccount
+from cogent.db.ensembl.database import Database
 
 from lib.progress import Progress
 from lib.tools import Prank, PrankError
@@ -51,7 +52,11 @@ class EnsemblInfo(object) :
                     dbname,chaff,dbrel = m.groups()
                     if dbname not in db2rel :
                         db2rel[dbname] = []
-                    db2rel[dbname].append(int(dbrel))
+                    if chaff is None :
+                        db2rel[dbname].append(int(dbrel))
+                    else :
+                        # in the case of the ensembl-metazoa species
+                        db2rel[dbname].append(int(chaff[:-1]))
                 #else :
                 #    if "core" in dbdesc :
                 #        print "rejected", dbdesc
@@ -101,8 +106,10 @@ class TranscriptCache(object) :
         self.account = HostAccount(options['db-host'], options['db-user'], options['db-pass'], port=options['db-port'])
         self.basedir = os.path.join(self.workingdir, str(self.release), self.species)
         self.resume = options['resume']
+        self.database = options['database'] # this is necessary for a hack used later
 
-        self._is_valid_species()
+        #self._is_valid_species()
+        Species.amendSpecies("Tribolium castaneum", "T.castaneum")
 
         self._check_directory(self.tmpdir, create=True)
         self._check_directory(self.workingdir, create=True)
@@ -139,7 +146,8 @@ class TranscriptCache(object) :
 
         except :
             pass
-
+        
+        # does not work
         Species.amendSpecies(self.species, self.species)
 
     def _consume_alignment_queue(self) :
@@ -426,6 +434,28 @@ class TranscriptCache(object) :
         print "Info: enumerating gene families in %s release %d" % (self.species, self.release)
         genome = Genome(self.species, Release=self.release, account=self.account)
         compara = Compara([self.species], Release=self.release, account=self.account)
+
+
+
+        # DON'T DO THIS AT HOME!
+        #
+        # what happens is it searches for compara databases, but unfortunately finds more than one
+        # in this situation pycogent just connects to the first one, which is always compara_bacteria
+        # so one solution is to dig through all the compara objects internals to provide a connection
+        # to the correct database ... obviously not the best solution, but at 6 lines of code definitely 
+        # the shortest ;-P
+        #
+        if self.database == 'ensembl-metazoa' :
+            from cogent.db.ensembl.host import DbConnection
+            from cogent.db.ensembl.name import EnsemblDbName
+            import sqlalchemy
+
+            new_db_name = EnsemblDbName(compara.ComparaDb.db_name.Name.replace('bacteria', 'metazoa'))
+            compara.ComparaDb._db = DbConnection(account=self.account, db_name=new_db_name)
+            compara.ComparaDb._meta = sqlalchemy.MetaData(compara.ComparaDb._db)
+        # end of DON'T DO THIS AT HOME!
+
+
 
         for gene in genome.getGenesMatching(BioType='protein_coding') :
             stableid = gene.StableId.lower()
