@@ -125,6 +125,8 @@ class TranscriptCache(object) :
         self.resume = options['resume']
         self.database = options['database'] # this is necessary for a hack used later
 
+        self.prank = options['prank']
+
         self._is_valid_species()
         #Species.amendSpecies("Tribolium castaneum", "T.castaneum")
 
@@ -444,10 +446,15 @@ class TranscriptCache(object) :
         print "Prank: aligning %s ..." % (os.path.basename(infile))
 
         try :
-            outfiles = Prank(self.tmpdir).align(infile, outfile)
+            outfiles = Prank(self.tmpdir, self.prank).align(infile, outfile)
         
         except PrankError, pe :
             print >> sys.stderr, "Error: Prank died on %s ..." % (os.path.basename(infile))
+            return
+
+        except OSError, ose :
+            print >> sys.stderr, "Error: '%s' %s" % (self.prank, str(ose))
+            self.stop = True
             return
 
         for f in outfiles :

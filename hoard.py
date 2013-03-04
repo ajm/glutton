@@ -34,7 +34,8 @@ def get_default_options() :
             'db-host'    : None,
             'db-port'    : None,
             'db-user'    : None,
-            'db-pass'    : None
+            'db-pass'    : None,
+            'prank'      : 'prank'
            }
 
 def predefined_databases() :
@@ -98,6 +99,7 @@ def usage() :
     -r      --release='release'     (default = latest)
     -w      --workingdir='dir'      (default = %s)
     -t      --tmpdir='dir'          (default = %s)
+    -p      --prank='location'      (default = None, use system-wide version)
     -a      --resume                (default = %s)
     -l      --list
     -x      --specify-db='db info'  ('db info' is comma separated host, port, username, password)
@@ -123,7 +125,7 @@ def parse_args() :
     try :
         opts,args = getopt.getopt(
                         sys.argv[1:],
-                        "s:o:r:hvlw:t:ad:x:",
+                        "s:o:r:hvlw:t:ad:x:p:",
                         [   
                             "species=", 
                             "species2=",
@@ -135,7 +137,8 @@ def parse_args() :
                             "help",
                             "resume",
                             "database=",
-                            "specify-db="
+                            "specify-db=",
+                            "prank="
                         ]
                     )
 
@@ -182,6 +185,9 @@ def parse_args() :
 
         elif o in ('-x', '--specify-db') :
             parse_database_string(a, options)
+
+        elif o in ('-p', '--prank') :
+            options['prank'] = a
 
         else :
             assert False, "unhandled option %s" % o

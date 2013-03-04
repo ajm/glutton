@@ -6,15 +6,16 @@ class PrankError(Exception) :
     pass
 
 class Prank(object) :
-    def __init__(self, tmpdir) :
+    def __init__(self, tmpdir, prank_binary) :
         self.tmpdir = tmpdir
+        self.binary = prank_binary
 
     def _tmpfilename(self) :
         return tempfile.mktemp(dir=self.tmpdir)
 
     def align(self, infile, outfile) :
         #command = "prank -d=%s -o=%s -translate -showtree" % (infile, outfile)
-        command = ["prank", "-d=%s" % infile, "-o=%s" % outfile, "-translate", "-showtree"]
+        command = [self.binary, "-d=%s" % infile, "-o=%s" % outfile, "-translate", "-showtree"]
 
         DEVNULL = open('/dev/null', 'w')
 
@@ -25,7 +26,7 @@ class Prank(object) :
             #print >> sys.stderr, "Error: '%s' failed (%s)" % (command, str(cpe))
             DEVNULL.close()
             raise PrankError()
-
+        
         DEVNULL.close()
 
         return map(lambda x: outfile + x, 
