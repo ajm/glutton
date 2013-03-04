@@ -108,7 +108,7 @@ class EnsemblInfo(object) :
 
 class TranscriptCache(object) :
     file_manifest = 'manifest'
-    file_prefix = 'genefamily_'
+    file_prefix = 'paralog_'
     queue_timeout = 1
 
     def __init__(self, options) :
@@ -118,6 +118,7 @@ class TranscriptCache(object) :
         self.workingdir = options['workingdir']
         self.tmpdir = options['tmpdir']
         self.species = options['species']
+        self.species2 = options['species2']
         self.release = options['release']
         self.account = HostAccount(options['db-host'], options['db-user'], options['db-pass'], port=options['db-port'])
         self.basedir = os.path.join(self.workingdir, str(self.release), self.species)
@@ -460,7 +461,11 @@ class TranscriptCache(object) :
 
         print "Info: enumerating gene families in %s release %d" % (self.species, self.release)
         genome = Genome(self.species, Release=self.release, account=self.account)
-        compara = Compara([self.species], Release=self.release, account=self.account)
+        
+        if self.species2 is None :
+            compara = Compara([self.species], Release=self.release, account=self.account)
+        else :
+            compara = Compara([self.species, self.species2], Release=self.release, account=self.account)
 
 
 
@@ -497,24 +502,49 @@ class TranscriptCache(object) :
             # get cds sequences of any paralogs
             paralogs = compara.getRelatedGenes(StableId=stableid, Relationship='within_species_paralog')
 
-            paralog_seqs = []
+            paralog_seqs = {}
             if paralogs is None :
-                paralog_seqs.append((stableid, gene.getLongestCdsTranscript().Cds))
+                paralog_seqs[stableid] = gene.getLongestCdsTranscript().Cds
             else :
                 for paralog in paralogs.Members :
                     paralog_id = paralog.StableId.lower()
                     self.genes.add(paralog_id)
-                    paralog_seqs.append((paralog_id, paralog.getLongestCdsTranscript().Cds))
+                    paralog_seqs[paralog_id] = paralog.getLongestCdsTranscript().Cds
 
             # write md5 to the manifest and save to disk
             fname = self._random_filename()
             fcontents = ""
-            for geneid,cds in paralog_seqs :
-                fcontents += (">%s\n%s\n" % (geneid, cds))
+            for geneid in paralog_seqs :
+                fcontents += (">%s\n%s\n" % (geneid, paralog_seqs[geneid]))
 
             self._add_to_manifest_queue(fname, fcontents, len(paralog_seqs) >= 2)
 
             print "Info: %s - %d genes in family (%s)" % (stableid, len(paralog_seqs), fname)
+
+
+            if self.species2 is not None :
+                # get cds sequences of any orthologs
+                ortholog_seqs = {}
+                
+                for geneid in paralog_seqs :
+                    # XXX http://Nov2010.archive.ensembl.org/info/docs/compara/homology_method.html
+                    orthologs = compara.getRelatedGenes(StableId=geneid, Relationship='ortholog_one2one')
+                    if orthologs is not None :
+                        for ortholog in orthologs.Members :
+                            ortholog_id = ortholog.StableId.lower()
+                            if ortholog_id not in paralog_seqs :
+                                ortholog_seqs[ortholog_id] = ortholog.getLongestCdsTranscript().Cds
+
+                # write md5 to manifest and save to disk
+                fname = fname.replace("paralog", "ortholog")
+                fcontents = ""
+                for geneid in ortholog_seqs :
+                    fcontents += (">%s\n%s\n" % (geneid, ortholog_seqs[geneid]))
+
+                self._add_to_manifest_queue(fname, fcontents, False)
+
+                print "Info: %s - %d orthologs (%s)" % (stableid, len(ortholog_seqs), fname)
+
 
             # check to see if we have been told to stop
             if self.stop :

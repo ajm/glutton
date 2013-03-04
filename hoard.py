@@ -30,6 +30,7 @@ def get_default_options() :
             'tmpdir'     : os.environ.get('TMPDIR', '/tmp'),
             'resume'     : False,
             'verbose'    : False,
+            'species2'   : None,
             'db-host'    : None,
             'db-port'    : None,
             'db-user'    : None,
@@ -93,7 +94,8 @@ def usage() :
     print >> sys.stderr, """Usage: %s [OPTIONS]
     -d      --database='db string'  (default = '%s', valid arguments : %s)
     -s      --species='species'     (no default, see output of --list for options)
-    -r      --release='release'     (no default, see output of --list for options)
+    -o      --species2='species'    (default = None, only specify if you want orthologs from species2)
+    -r      --release='release'     (default = latest)
     -w      --workingdir='dir'      (default = %s)
     -t      --tmpdir='dir'          (default = %s)
     -a      --resume                (default = %s)
@@ -121,9 +123,10 @@ def parse_args() :
     try :
         opts,args = getopt.getopt(
                         sys.argv[1:],
-                        "s:r:hvlw:t:ad:x:",
+                        "s:o:r:hvlw:t:ad:x:",
                         [   
                             "species=", 
+                            "species2=",
                             "relsease=",
                             "workingdir=",
                             "tmpdir=",
@@ -154,6 +157,9 @@ def parse_args() :
 
         elif o in ('-s', '--species') :
             options['species'] = a
+
+        elif o in ('-o', '--species2') :
+            options['species2'] = a
 
         elif o in ('-w', '--workingdir') :
             options['workingdir'] = a
