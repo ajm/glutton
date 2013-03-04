@@ -557,9 +557,6 @@ class TranscriptCache(object) :
             if self.stop :
                 break
 
-            # XXX DEBUG
-            if len(self.genes) > 10 :
-                break
 
 
         if self.stop :
