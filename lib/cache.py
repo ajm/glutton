@@ -415,6 +415,8 @@ class TranscriptCache(object) :
     def _align(self, infile) :
         outfile = self._swap_dirname(infile, directory=self.tmpdir)
         
+        print "Prank: aligning %s ..." % (os.path.basename(infile))
+
         try :
             outfiles = Prank(self.tmpdir).align(infile, outfile)
         

@@ -16,13 +16,17 @@ class Prank(object) :
         #command = "prank -d=%s -o=%s -translate -showtree" % (infile, outfile)
         command = ["prank", "-d=%s" % infile, "-o=%s" % outfile, "-translate", "-showtree"]
 
+        DEVNULL = open('/dev/null', 'w')
+
         try :
-            subprocess.check_call(command, stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+            subprocess.check_call(command, stderr=DEVNULL, stdout=DEVNULL)
 
         except subprocess.CalledProcessError, cpe :
             #print >> sys.stderr, "Error: '%s' failed (%s)" % (command, str(cpe))
+            DEVNULL.close()
             raise PrankError()
 
+        DEVNULL.close()
 
         return map(lambda x: outfile + x, 
                 [".1.dnd", ".2.dnd", ".nuc.1.fas", ".nuc.2.fas", ".pep.1.fas", ".pep.2.fas"])
