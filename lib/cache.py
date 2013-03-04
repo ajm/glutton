@@ -102,7 +102,8 @@ class EnsemblInfo(object) :
             if dbprefix not in printed :
                 print dbprefix.capitalize().replace('_', ' ').rjust(32),
                 print "undefined".rjust(18),
-                print db2rel.get(dbprefix).rjust(12)
+                print db2rel.get(dbprefix).rjust(12),
+                print dbprefix.rjust(30)
 
 
 class TranscriptCache(object) :
@@ -156,15 +157,7 @@ class TranscriptCache(object) :
 
     # this is a hack, but will often work
     def latin2common(self, latin_name) :
-        tokens = latin_name.split()
-        if len(tokens) != 2 :
-            return "undefined"
-
-        tokens = map(lambda x : x.lower(), tokens)
-
-        if tokens[1] == 'collection' :
-            return tokens[0].capitalize()
-
+        tokens = latin_name.lower().split()
         return tokens[0][0].capitalize() + "." + tokens[1]
 
     def _is_valid_species(self) :
@@ -173,7 +166,9 @@ class TranscriptCache(object) :
             return
 
         except :
-            pass
+            if 'collection' in self.species.lower() :
+                print >> sys.stderr, "Error: species containing the word 'collection' do not work..."
+                sys.exit(-1)
 
         common = self.latin2common(self.species)
         print >> sys.stderr, "Info: Requested species '%s' not found in pycogent, adding as '%s' (this might not work...)" % (self.species, common)
