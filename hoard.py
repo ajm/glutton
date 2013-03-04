@@ -196,6 +196,21 @@ def main() :
         ei.print_species_table()
         return 0
 
+    if options['species'] is None :
+        print >> sys.stderr, "Error: you must specify a species!"
+        return -1
+
+    if options['release'] is None :
+        ei = EnsemblInfo(options)
+        options['release'] = ei.get_latest_release(options['species'])
+        
+        if options['release'] == -1 :
+            print >> sys.stderr, "Could not find database for \'%s\', run --list command for species names" % options['species']
+            return -1
+
+        print >> sys.stderr, "Release not specified, using release %d" % options['release']
+        
+
     cache = TranscriptCache(options)
     cache.build()
 

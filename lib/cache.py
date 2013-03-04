@@ -30,7 +30,7 @@ class EnsemblInfo(object) :
         releases.sort()
         return "%d-%d" % (releases[0], releases[-1])
 
-    def _get_latest_release_versions(self) :
+    def _get_latest_release_versions(self, only_latest=False) :
         #showdb = "mysql -h ensembldb.ensembl.org -u anonymous -P5306 -B -e 'SHOW DATABASES;'"
         #showdb = "mysql -h mysql.ebi.ac.uk -u anonymous -P4157 -B -e 'SHOW DATABASES;'"
         passwd = "" if self.db_pass == "" else "-p %s" % self.db_pass
@@ -62,9 +62,24 @@ class EnsemblInfo(object) :
                 #        print "rejected", dbdesc
 
         for dbname in db2rel :
-            db2rel[dbname] = self._convert_to_range(db2rel[dbname])
+            if only_latest :
+                db2rel[dbname] = max(db2rel[dbname])
+            else :
+                db2rel[dbname] = self._convert_to_range(db2rel[dbname])
 
         return db2rel
+
+    def get_latest_release(self, species) :
+        db2rel = self._get_latest_release_versions(only_latest=True)
+        try :
+            return db2rel.get(Species.getEnsemblDbPrefix(species))
+        except :
+            pass
+            
+        tokens = map(lambda x : x.lower(), species.split())
+        dbname = '_'.join(tokens)
+ 
+        return db2rel.get(dbname, -1)
 
     def print_species_table(self) :
         db2rel = self._get_latest_release_versions()
@@ -108,8 +123,8 @@ class TranscriptCache(object) :
         self.resume = options['resume']
         self.database = options['database'] # this is necessary for a hack used later
 
-        #self._is_valid_species()
-        Species.amendSpecies("Tribolium castaneum", "T.castaneum")
+        self._is_valid_species()
+        #Species.amendSpecies("Tribolium castaneum", "T.castaneum")
 
         self._check_directory(self.tmpdir, create=True)
         self._check_directory(self.workingdir, create=True)
@@ -139,6 +154,19 @@ class TranscriptCache(object) :
     def shutdown(self) :
         self.stop = True
 
+    # this is a hack, but will often work
+    def latin2common(self, latin_name) :
+        tokens = latin_name.split()
+        if len(tokens) != 2 :
+            return "undefined"
+
+        tokens = map(lambda x : x.lower(), tokens)
+
+        if tokens[1] == 'collection' :
+            return tokens[0].capitalize()
+
+        return tokens[0][0].capitalize() + "." + tokens[1]
+
     def _is_valid_species(self) :
         try :
             Species.getCommonName(self.species)
@@ -146,9 +174,11 @@ class TranscriptCache(object) :
 
         except :
             pass
+
+        common = self.latin2common(self.species)
+        print >> sys.stderr, "Info: Requested species '%s' not found in pycogent, adding as '%s' (this might not work...)" % (self.species, common)
         
-        # does not work
-        Species.amendSpecies(self.species, self.species)
+        Species.amendSpecies(self.species, common)
 
     def _consume_alignment_queue(self) :
         while not self.stop :
@@ -493,6 +523,10 @@ class TranscriptCache(object) :
 
             # check to see if we have been told to stop
             if self.stop :
+                break
+
+            # XXX DEBUG
+            if len(self.genes) > 10 :
                 break
 
 
