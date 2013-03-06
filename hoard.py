@@ -35,7 +35,9 @@ def get_default_options() :
             'db-port'    : None,
             'db-user'    : None,
             'db-pass'    : None,
-            'prank'      : 'prank'
+            'prank'      : 'prank',
+            'prank-threads' : 1,
+            'alignment-only' : False
            }
 
 def predefined_databases() :
@@ -100,13 +102,16 @@ def usage() :
     -w      --workingdir='dir'      (default = %s)
     -t      --tmpdir='dir'          (default = %s)
     -p      --prank='location'      (default = None, use system-wide version)
+    -q      --prank-threads=NUM     (default = %d)
+    -b      --alignment-only        (default = %s, assumes --resume)
     -a      --resume                (default = %s)
     -l      --list
     -x      --specify-db='db info'  ('db info' is comma separated host, port, username, password)
     -v      --verbose
     -h      --help
 """ % (sys.argv[0], options['database'], predefined_databases(),
-        options['workingdir'], options['tmpdir'], options['resume'])
+        options['workingdir'], options['tmpdir'], options['prank-threads'], 
+        options['alignment-only'], options['resume'])
 
 def expect_int(parameter, argument) :
     try :
@@ -125,7 +130,7 @@ def parse_args() :
     try :
         opts,args = getopt.getopt(
                         sys.argv[1:],
-                        "s:o:r:hvlw:t:ad:x:p:",
+                        "s:o:r:hvlw:t:ad:x:p:q:b",
                         [   
                             "species=", 
                             "species2=",
@@ -138,7 +143,9 @@ def parse_args() :
                             "resume",
                             "database=",
                             "specify-db=",
-                            "prank="
+                            "prank=",
+                            "prank-threads=",
+                            "alignment-only"
                         ]
                     )
 
@@ -176,6 +183,10 @@ def parse_args() :
         elif o in ('-a', '--resume') :
             options['resume'] = True
 
+        elif o in ('-b', '--alignment-only') :
+            options['alignment-only'] = True
+            options['resume'] = True
+
         elif o in ('-d', '--database') :
             if a not in databases.keys() :
                 print >> sys.stderr, "Error: '%s' is not a predefined database, valid strings are : %s" % (a, predefined_databases())
@@ -188,6 +199,9 @@ def parse_args() :
 
         elif o in ('-p', '--prank') :
             options['prank'] = a
+
+        elif o in ('-q', '--prank-threads') :
+            options['prank-threads'] = expect_int("prank-threads", a)
 
         else :
             assert False, "unhandled option %s" % o
@@ -224,7 +238,11 @@ def main() :
         
 
     cache = TranscriptCache(options)
-    cache.build()
+
+    if options['resume'] and options['alignment-only'] :
+        cache.join()
+    else :
+        cache.build()
 
     return 0
 

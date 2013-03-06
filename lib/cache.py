@@ -137,12 +137,19 @@ class TranscriptCache(object) :
 
         self.genes = set()
 
-        # alignments are handled in one thread
+        # alignments are handled in multiple threads
+        self.prank_threads = options['prank-threads'] if options['prank-threads'] > 0 else 1
         self.alignment_queue = Queue.Queue()
-        self.alignment_thread = threading.Thread(target=self._consume_alignment_queue)
-        self.alignment_thread.daemon = True
+
+        self.alignment_threads = []
+
+        for i in range(self.prank_threads) :
+            t = threading.Thread(target=self._consume_alignment_queue)
+            t.daemon = True
+            self.alignment_threads.append(t)
 
         # there is a separate thread to write the manifest and files
+        # interactions with the manifest are not thread-safe (and the workload is miniscule anyway)
         self.manifest_queue = Queue.Queue()
         self.manifest_thread = threading.Thread(target=self._consume_manifest_queue)
         self.manifest_thread.daemon = True
@@ -157,6 +164,12 @@ class TranscriptCache(object) :
 
     def shutdown(self) :
         self.stop = True
+
+    def join(self) :
+        for t in self.alignment_threads :
+            t.join()
+
+        self.manifest_thread.join()
 
     # this is a hack, but will often work
     def latin2common(self, latin_name) :
@@ -564,7 +577,6 @@ class TranscriptCache(object) :
         else :
             print "Info: download complete..."
             self.download_complete = True
-            self.alignment_thread.join()
-            self.manifest_thread.join()
+            self.join()
             print "Info: done!"
 
