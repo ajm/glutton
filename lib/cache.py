@@ -444,8 +444,6 @@ class TranscriptCache(object) :
 
         print "Info: verification complete (%d genes in %d families)" % (len(self.genes), len(good_gene_families))
 
-        sys.exit(-1)
-
     def _count_sequences(self, fname) :
         count = 0
         for label,seq in MinimalFastaParser(open(fname)) :
