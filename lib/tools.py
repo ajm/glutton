@@ -12,7 +12,7 @@ class Prank(object) :
 
     def _tmpfilename(self) :
         return tempfile.mktemp(dir=self.tmpdir)
-
+    
     def align(self, infile, outfile) :
         #command = "prank -d=%s -o=%s -translate -showtree" % (infile, outfile)
         command = [self.binary, "-d=%s" % infile, "-o=%s" % outfile, "-translate", "-showtree"]

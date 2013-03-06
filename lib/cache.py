@@ -7,6 +7,7 @@ import hashlib
 import string
 import tempfile
 import glob
+import time
 
 import Queue
 import threading
@@ -167,6 +168,17 @@ class TranscriptCache(object) :
         self.stop = True
 
     def join(self) :
+        # if there is only alignments to do, then joining the alignment
+        # threads results in ctrl-c being passed to an instance of prank
+        # which is not correct behaviour
+        #
+        # instead just poll for completion
+        while True :
+            if self.alignment_queue.empty() or self.stop :
+                break
+            
+            time.sleep(1)
+
         for t in self.alignment_threads :
             t.join()
 

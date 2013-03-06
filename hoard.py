@@ -240,6 +240,7 @@ def main() :
     cache = TranscriptCache(options)
 
     if options['resume'] and options['alignment-only'] :
+        cache.download_complete = True
         cache.join()
     else :
         cache.build()
