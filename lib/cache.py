@@ -217,6 +217,8 @@ class TranscriptCache(object) :
             self._align(fname)
             self.alignment_queue.task_done()
 
+        self.alignment_queue.join()
+
         self.alignments_complete = True
         print "Info: alignment thread finished"
 
