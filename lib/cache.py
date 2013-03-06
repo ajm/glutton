@@ -159,7 +159,8 @@ class TranscriptCache(object) :
         else :
             self._verify_manifest()
 
-        self.alignment_thread.start()
+        for t in self.alignment_threads :
+            t.start()
         self.manifest_thread.start()
 
     def shutdown(self) :
@@ -327,7 +328,8 @@ class TranscriptCache(object) :
 
     def _verify_manifest(self) :
         manifest_pat = re.compile("^(.+) ([" + string.ascii_lowercase + string.digits + "]{32})$") # filename + md5
-        family_pat = re.compile("^" + type(self).file_prefix + "[" + string.ascii_letters + string.digits + "]{6}$") # filename for CDS data
+        #family_pat = re.compile("^" + type(self).file_prefix + "[" + string.ascii_letters + string.digits + "_" + "]{6}$") # filename for CDS data
+        family_pat = re.compile("^(paralog|ortholog)_[" + string.ascii_letters + string.digits + "_" + "]{6}$")
         f2md5 = {}
         linenum = 0
 
@@ -357,9 +359,11 @@ class TranscriptCache(object) :
 
         f.close()
 
+
         # 2. check md5 sums of gene families containing
-        #    CDS data
+        #    CDS data (paralog_ files)
         good_gene_families = []
+        good_orthologs = [] # these may not exist
         
         for fname in f2md5 :
             if not family_pat.match(fname) :
@@ -367,13 +371,18 @@ class TranscriptCache(object) :
 
             try :
                 if self._file_md5(os.path.join(self.basedir, fname)) == f2md5[fname] :
-                    good_gene_families.append(fname)
+                    if fname.startswith("paralog_") :
+                        good_gene_families.append(fname)
+                    elif fname.startswith("ortholog_") :
+                        good_orthologs.append(fname)
+
                 else :
                     print >> sys.stderr, "Info: md5 for %s was bad..." % fname
 
             except IOError, ioe :
                 print >> sys.stderr, "Info: %s not found!" % fname
                 continue
+
 
         # 3. for all the gene family files with good md5s
         #    if there is more than one sequence, check that 
@@ -410,17 +419,17 @@ class TranscriptCache(object) :
                 good_alignments += alignment_files
 
 
-        good_files = good_gene_families + good_alignments
+        good_files = good_gene_families + good_orthologs + good_alignments
         # 4. rewrite manifest
         #    XXX what if the program is killed during?
-        f = open(self.manifest_name, 'w')
+#        f = open(self.manifest_name, 'w')
 
         for fname in good_files :
-            if family_pat.match(fname) :
+            if family_pat.match(fname) and fname.startswith("paralog_") :
                 self._add_genes(os.path.join(self.basedir, fname))
-            print >> f, "%s %s" % (fname, f2md5[fname])
+#            print >> f, "%s %s" % (fname, f2md5[fname])
 
-        f.close()
+#        f.close()
 
         # 5. unlink chaff
         for fname in glob.glob(os.path.join(self.basedir, '*')) :
@@ -431,9 +440,11 @@ class TranscriptCache(object) :
 
             if basename not in good_files :
                 print >> sys.stderr, "Info: removing %s ..." % basename
-                os.remove(fname)
+#                os.remove(fname)
 
         print "Info: verification complete (%d genes in %d families)" % (len(self.genes), len(good_gene_families))
+
+        sys.exit(-1)
 
     def _count_sequences(self, fname) :
         count = 0
