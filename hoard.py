@@ -103,8 +103,8 @@ def usage() :
     -t      --tmpdir='dir'          (default = %s)
     -p      --prank='location'      (default = None, use system-wide version)
     -q      --prank-threads=NUM     (default = %d)
-    -b      --alignment-only        (default = %s, assumes --resume)
-    -a      --resume                (default = %s)
+    -a      --alignment-only        (default = %s, assumes --continue)
+    -c      --continue              (default = %s, don't start from scratch, but resume download)
     -l      --list
     -x      --specify-db='db info'  ('db info' is comma separated host, port, username, password)
     -v      --verbose
@@ -130,7 +130,7 @@ def parse_args() :
     try :
         opts,args = getopt.getopt(
                         sys.argv[1:],
-                        "s:o:r:hvlw:t:ad:x:p:q:b",
+                        "s:o:r:hvlw:t:ad:x:p:q:c",
                         [   
                             "species=", 
                             "species2=",
@@ -140,7 +140,7 @@ def parse_args() :
                             "list",
                             "verbose", 
                             "help",
-                            "resume",
+                            "continue",
                             "database=",
                             "specify-db=",
                             "prank=",
@@ -180,10 +180,10 @@ def parse_args() :
         elif o in ('-r', '--release') :
             options['release'] = expect_int("release", a)
 
-        elif o in ('-a', '--resume') :
+        elif o in ('-c', '--continue') :
             options['resume'] = True
 
-        elif o in ('-b', '--alignment-only') :
+        elif o in ('-a', '--alignment-only') :
             options['alignment-only'] = True
             options['resume'] = True
 

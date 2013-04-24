@@ -18,6 +18,8 @@ from cogent.db.ensembl.database import Database
 
 from lib.progress import Progress
 from lib.tools import Prank, PrankError
+from lib.datatypes import Sequence
+from lib.filetypes import FastqFile
 
 
 class EnsemblInfo(object) :
@@ -369,7 +371,11 @@ class TranscriptCache(object) :
                 print >> sys.stderr, "Warning: line %d in %s appears to be corrupt..." % (linenum, f.name)
                 continue
 
-            f2md5[result.group(1)] = result.group(2)
+            # use md5s to check for duplicates
+            fname = result.group(1)
+            md5val = result.group(2)
+
+            f2md5[fname] = md5val
 
         f.close()
 
@@ -378,7 +384,7 @@ class TranscriptCache(object) :
         #    CDS data (paralog_ files)
         good_gene_families = []
         good_orthologs = [] # these may not exist
-        
+
         for fname in f2md5 :
             if not family_pat.match(fname) :
                 continue
@@ -387,6 +393,7 @@ class TranscriptCache(object) :
                 if self._file_md5(os.path.join(self.basedir, fname)) == f2md5[fname] :
                     if fname.startswith("paralog_") :
                         good_gene_families.append(fname)
+
                     elif fname.startswith("ortholog_") :
                         good_orthologs.append(fname)
 
@@ -436,14 +443,18 @@ class TranscriptCache(object) :
         good_files = good_gene_families + good_orthologs + good_alignments
         # 4. rewrite manifest
         #    XXX what if the program is killed during?
-#        f = open(self.manifest_name, 'w')
+        #    XXX os.rename is atomic on linux
+        f = open(self.manifest_name + '.tmp', 'w')
 
         for fname in good_files :
             if family_pat.match(fname) and fname.startswith("paralog_") :
                 self._add_genes(os.path.join(self.basedir, fname))
-#            print >> f, "%s %s" % (fname, f2md5[fname])
+            print >> f, "%s %s" % (fname, f2md5[fname])
 
-#        f.close()
+        f.close()
+
+        os.rename(self.manifest_name + '.tmp', self.manifest_name)
+
 
         # 5. unlink chaff
         for fname in glob.glob(os.path.join(self.basedir, '*')) :
@@ -454,7 +465,7 @@ class TranscriptCache(object) :
 
             if basename not in good_files :
                 print >> sys.stderr, "Info: removing %s ..." % basename
-#                os.remove(fname)
+                os.remove(fname)
 
         print "Info: verification complete (%d genes in %d families)" % (len(self.genes), len(good_gene_families))
 
@@ -464,14 +475,20 @@ class TranscriptCache(object) :
             count += 1
         return count
 
-    def _add_genes(self, fname) :
+    def _get_genes(self, fname) :
         f = open(fname)
+        tmp = []
 
         for line in f :
             if line.startswith('>') :
-                self.genes.add(line.strip()[1:])
+                tmp.append(line.strip()[1:])
 
         f.close()
+
+        return tmp
+
+    def _add_genes(self, fname) :
+        self.genes.update(self._get_genes(fname))
 
     def _random_filename(self) :
         return os.path.basename(tempfile.mktemp(prefix=type(self).file_prefix, dir=self.basedir))
@@ -531,6 +548,7 @@ class TranscriptCache(object) :
         # end of DON'T DO THIS AT HOME!
 
 
+        skipped = 0
 
         for gene in genome.getGenesMatching(BioType='protein_coding') :
             stableid = gene.StableId.lower()
@@ -538,6 +556,7 @@ class TranscriptCache(object) :
             # ignore genes that have already been seen as members of
             # gene families
             if stableid in self.genes :
+                skipped += 1
                 continue
 
             self.genes.add(stableid)
@@ -571,12 +590,13 @@ class TranscriptCache(object) :
                 
                 for geneid in paralog_seqs :
                     # XXX http://Nov2010.archive.ensembl.org/info/docs/compara/homology_method.html
-                    orthologs = compara.getRelatedGenes(StableId=geneid, Relationship='ortholog_one2one')
-                    if orthologs is not None :
-                        for ortholog in orthologs.Members :
-                            ortholog_id = ortholog.StableId.lower()
-                            if ortholog_id not in paralog_seqs :
-                                ortholog_seqs[ortholog_id] = ortholog.getLongestCdsTranscript().Cds
+                    for rel in ['ortholog_one2one', 'ortholog_one2many', 'ortholog_many2many'] :
+                        orthologs = compara.getRelatedGenes(StableId=geneid, Relationship=rel)
+                        if orthologs is not None :
+                            for ortholog in orthologs.Members :
+                                ortholog_id = ortholog.StableId.lower()
+                                if (ortholog_id not in paralog_seqs) and (ortholog_id not in ortholog_seqs) :
+                                    ortholog_seqs[ortholog_id] = ortholog.getLongestCdsTranscript().Cds
 
                 # write md5 to manifest and save to disk
                 fname = fname.replace("paralog", "ortholog")
@@ -594,6 +614,9 @@ class TranscriptCache(object) :
                 break
 
 
+        if self.resume :
+            print "Info: skipped over %d genes that had already been downloaded." % skipped
+
 
         if self.stop :
             print "Info: killed by user..."
@@ -601,5 +624,76 @@ class TranscriptCache(object) :
             print "Info: download complete..."
             self.download_complete = True
             self.join()
+            self.build_exonerate_index()
             print "Info: done!"
+
+    def build_exonerate_index(self) :
+        pat = re.compile("^paralog_[" + string.ascii_letters + string.digits + "_" + "]{6}$")
+        
+        fa_name = os.path.join(self.basedir, 'exonerate.fa')
+        db_name = os.path.join(self.basedir, 'exonerate.esd')
+        in_name = os.path.join(self.basedir, 'exonerate.esi')
+
+        # write everything into a single file
+        # XXX unforunately some ensembl gene trees share genes (a minority), so for
+        #     exonerate to work I either need to change the ids (possible) or else
+        #     don't include all gene trees (better as there are so few affected)
+        everything = open(fa_name, 'w') 
+        geneset = set()
+
+        for fname in glob.glob(os.path.join(self.basedir, '*')) :
+            if pat.match(os.path.basename(fname)) :
+                #f = open(fname)
+                #print >> everything, f.read()
+                #f.close()
+                f = FastqFile(fname)
+                f.open()
+                tmp = []
+
+                for seq in f :
+                    # if any of the genes have been seen for far, then we 
+                    # essentially exclude this gene family
+                    if seq.id in geneset :
+                        break
+
+                    tmp.append(seq)
+                else :
+                    for i in tmp :
+                        geneset.add(i.id)
+                        print >> everything, i.fasta()
+
+                f.close()
+
+        everything.close()
+        del geneset
+
+        # fastareformat
+        command = 'fastareformat %s > %s' % (fa_name, fa_name + '.tmp')
+        ret = os.system(command)
+        if ret != 0 :
+            print >> sys.stderr, "Error: fastareformat returned error code %d" % ret
+            sys.exit(-1)
+
+        try :
+            os.rename(fa_name + '.tmp', fa_name)
+        
+        except OSError, ose :
+            print >> sys.stderr, "Error: %s" % str(ose)
+            sys.exit(-1)
+
+        # build the database
+        command = 'fasta2esd %s %s' % (fa_name, db_name)
+        print "Info: building exonerate database (%s)" % command
+        ret = os.system(command)
+        if ret != 0 :
+            print >> sys.stderr, "Error: fasta2esd returned error code %d" % ret
+            sys.exit(-1)
+
+        # build the index
+        command = 'esd2esi %s %s' % (db_name, in_name)
+        print "Info: creating exonerate database index (%s)" % command
+        ret = os.system(command)
+        if ret != 0 :
+            print >> sys.stderr, "Error: esd2esi returned error code %d" % ret
+            sys.exit(-1)
 
