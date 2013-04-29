@@ -1,8 +1,5 @@
 import math
 
-from functools import total_ordering
-
-
 class SequenceError(Exception) :
     pass
 
@@ -37,7 +34,6 @@ class IUPAC(object) :
         except KeyError, ke :
             raise SequenceError("No IUPAC code for \"%s\"" % ''.join(sorted(bases)))
 
-@total_ordering
 class Sequence(object) :
     def __init__(self, seq, qual_str=None) :
         self.sequence = seq

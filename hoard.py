@@ -242,6 +242,8 @@ def main() :
     if options['resume'] and options['alignment-only'] :
         cache.download_complete = True
         cache.join()
+        cache.build_exonerate_index()
+        print "Info: done!"
     else :
         cache.build()
 
