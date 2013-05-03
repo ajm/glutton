@@ -13,7 +13,8 @@ def start_exonerate(d) :
     global exonerate
 
     index_file = os.path.join(d, 'exonerate.esi')
-    args = ['exonerate-server', 'exonerate.esi', '--port', '12887']
+    args = ['exonerate-server', 'exonerate.esi', 
+            '--port', '12887']
 
     if not (os.path.exists(index_file) and os.path.isfile(index_file)) :
         print >> sys.stderr, "Error: %d does not exist..." % index_file
@@ -58,7 +59,11 @@ def get_genes(fname) :
     return tmp
 
 def query_exonerate(fname) :
-    args = ['exonerate', fname, 'localhost:12887', '--bestn', '1', '--model', 'affine:local']
+    args = ['exonerate', fname, 
+            'localhost:12887', 
+            '--bestn', '1', 
+            '--model', 'affine:local', 
+            '--showalignment', 'no']
 
     tmp = get_genes(fname)
 
