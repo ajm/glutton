@@ -53,8 +53,7 @@ def proportion_aligned(exonerate, contigs) :
 
         total_sequence += len(contig)
 
-    return (len(contigs), perfect_contigs, perfect_contigs / float(len(contigs)), 
-           total_sequence, total_aligned, total_aligned / float(total_sequence))
+    return (len(contigs), perfect_contigs, total_sequence, total_aligned)
 
 def main() :
     if len(sys.argv) != 2 :
@@ -70,9 +69,7 @@ def main() :
     contig_threshold = 200
 
     fields = ["k","kmer_threshold","merge_overlap","assemble_overlap",
-              "num_contigs","perfect_contigs","proportion_perfect",
-              "total_sequence","aligned_sequence","proportion_aligned",
-              "n50"]
+              "num_contigs","perfect_contigs","total_sequence","aligned_sequence","n50"]
     print delim.join(fields)
 
     exonerate = Exonerate()
@@ -88,18 +85,16 @@ def main() :
         contigs = filter(lambda x : len(x) >= contig_threshold, contigs)
 
         # XXX debug
-        #contigs = contigs[:10]
+        #contigs = contigs[:3]
         # XXX debug
 
         #v = map(int, list(m.groups()))
         v = list(m.groups())
-        num_contigs, perfect_contigs, prop_perfect, sequence, aligned, prop_aligned = proportion_aligned(exonerate, contigs)
+        num_contigs, perfect_contigs, sequence, aligned = proportion_aligned(exonerate, contigs)
         v.append(num_contigs)
         v.append(perfect_contigs)
-        v.append(prop_perfect)
         v.append(sequence)
         v.append(aligned)
-        v.append(prop_aligned)
         v.append(n50(contigs, sequence))
 
         print delim.join(map(str, v))

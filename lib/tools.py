@@ -114,10 +114,15 @@ class Exonerate(object) :
         return self.query_file(f.name, dict(zip(map(lambda x : x.id, seqlist), [None]*len(seqlist))), True)
 
     def query_file(self, fname, seqdict=None, unlink=False) :
-        args = ['exonerate', fname,
+        oldargs = ['exonerate', fname,
                 'localhost:12887',
                 '--bestn', '1',
                 '--model', 'affine:local',
+                '--showalignment', 'no']
+
+        args = ['exonerate', fname,
+                'localhost:12887',
+                '--bestn', '1',
                 '--showalignment', 'no']
 
         if seqdict is None :
