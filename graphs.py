@@ -3,6 +3,7 @@ import glob
 import re
 import os
 
+from lib.progress import Progress
 from lib.filetypes import FastqFile
 from lib.datatypes import Sequence
 from lib.tools import Exonerate, ExonerateHit, ExonerateVulgar
@@ -124,6 +125,8 @@ def main() :
 
     directory = sys.argv[1]
 
+    os.system('killall exonerate-server &> /dev/null')
+
     # assembly.SRR535750.m50f0q30.uniq.k41.kt9.mo45.ao45-contigs.fa
     p = re.compile("assembly.SRR535750.m50f0q30.uniq.k(\d+).kt(\d+).mo(\d+).ao(\d+)-contigs.fa")
     delim = "\t"
@@ -143,7 +146,12 @@ def main() :
 
     print >> sys.stderr, "transcriptome length = %d" % transcriptome_length
 
-    for f in glob.glob("*contigs.fa") :
+    contig_files = glob.glob("*contigs.fa")
+
+    pb = Progress("Progress:", len(contig_files))
+    pb.start()
+
+    for f in contig_files :
         m = p.match(f)
         if m is None :
             continue
@@ -153,7 +161,7 @@ def main() :
         contigs = filter(lambda x : len(x) >= contig_threshold, contigs)
 
         # XXX debug
-        #contigs = contigs[:10]
+        contigs = contigs[:3]
         # XXX debug
 
         #v = map(int, list(m.groups()))
@@ -170,6 +178,9 @@ def main() :
 
         print delim.join(map(str, v))
 
+        pb.increment()
+
+    pb.end()
     exonerate.stop()
 
 if __name__ == '__main__' :
