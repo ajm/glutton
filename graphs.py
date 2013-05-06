@@ -92,14 +92,20 @@ def proportion_aligned(exonerate, contigs, total_transcriptome_length) :
     match_ranges = {}
 
     for contig in contigs :
+        total_sequence += len(contig)
+
         if results[contig.id] != None :
             qalign = results[contig.id].query
             aligned = qalign.stop - qalign.start
+
+            # XXX arbitrary
+            if aligned < 100 :
+                continue
+
             total_aligned += aligned
 
             if aligned == len(contig) :
                 perfect_contigs += 1
-
 
             # alignment may be on the negative strand
             # but all this code assumes that for range (a,b)
@@ -110,8 +116,6 @@ def proportion_aligned(exonerate, contigs, total_transcriptome_length) :
 
 
             add_match_range(m, match_ranges)
-
-        total_sequence += len(contig)
 
     #print print_ranges(match_ranges)
     coverage = sum_ranges(match_ranges) / float(total_transcriptome_length)
