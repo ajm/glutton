@@ -90,9 +90,14 @@ def sga(fasta, k, kmer_threshold, merge_overlap, assemble_overlap) :
 def sga_correct(fasta, k, kmer_threshold) :
     global threads
 
-    run("sga correct -k %d -x %d --discard -t %d -o correct.fa %s" % (k, kmer_threshold, threads, fasta))
-    run("sga index -a ropebwt -t %d correct.fa" % (threads))
-    run("sga filter -x 2 -t %d --homopolymer-check --low-complexity-check correct.fa" % (threads))
+    if kmer_threshold != 0 :
+        run("sga correct -k %d -x %d --discard -t %d -o correct.fa %s" % (k, kmer_threshold, threads, fasta))
+        run("sga index -a ropebwt -t %d correct.fa" % (threads))
+        run("sga filter -k %d -x %d -t %d --homopolymer-check --low-complexity-check correct.fa" % (k, kmer_threshold, threads))
+    else :
+        run_shell("cp %s correct.fa" % (fasta))
+        run("sga index -a ropebwt -t %d correct.fa" % (threads))
+        run("sga filter --no-kmer-check -t %d --homopolymer-check --low-complexity-check correct.fa" % (threads))
 
 def sga_build(merge_overlap) :
     global threads
@@ -117,8 +122,8 @@ def main() :
 
     f = sga_init(sys.argv[1], 50, 0, 30)
 
-    k_values =  [27,29,31,33,35,37,39,41]
-    kt_values = [1,2,3,4,5,6,7,8,9]
+    k_values =  [23,25,27,29,31,33,35,37,39,41]
+    kt_values = [0,1,2,3,4,5,6,7,8,9]
     mo_values = [20,25,30,35,40,45]
     ao_values = [20,25,30,35,40,45]
 
