@@ -122,13 +122,13 @@ def proportion_aligned(exonerate, contigs, total_transcriptome_length, min_align
     return (len(contigs), perfect_contigs, total_sequence, total_aligned, coverage)
 
 def main() :
-    if len(sys.argv) != 3 :
-        print >> sys.stderr, "Usage: %s <DIR> <min contig length>\n" % sys.argv[0]
+    if len(sys.argv) != 4 :
+        print >> sys.stderr, "Usage: %s <DIR> <min contig length> <min alignment length>\n" % sys.argv[0]
         sys.exit(-1)
 
     directory = sys.argv[1]
     min_contig_length = int(sys.argv[2])
-    min_alignment_length = min_contig_length / 2
+    min_alignment_length = int(sys.argv[3])
 
     os.system('killall exonerate-server &> /dev/null')
 
