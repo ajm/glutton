@@ -79,7 +79,7 @@ def print_ranges(ranges) :
         if len(ranges[i]) > 5 :
             print i, sorted(ranges[i])
 
-def proportion_aligned(exonerate, contigs, total_transcriptome_length) :
+def proportion_aligned(exonerate, contigs, total_transcriptome_length, min_alignment_length) :
     results = exonerate.query_sequences(contigs)
 
     #for i in results :
@@ -98,8 +98,7 @@ def proportion_aligned(exonerate, contigs, total_transcriptome_length) :
             qalign = results[contig.id].query
             aligned = qalign.stop - qalign.start
 
-            # XXX arbitrary
-            if aligned < 100 :
+            if aligned < min_alignment_length :
                 continue
 
             total_aligned += aligned
@@ -123,19 +122,20 @@ def proportion_aligned(exonerate, contigs, total_transcriptome_length) :
     return (len(contigs), perfect_contigs, total_sequence, total_aligned, coverage)
 
 def main() :
-    if len(sys.argv) != 2 :
-        print >> sys.stderr, "Usage: %s <DIR>\n" % sys.argv[0]
+    if len(sys.argv) != 3 :
+        print >> sys.stderr, "Usage: %s <DIR> <min contig length>\n" % sys.argv[0]
         sys.exit(-1)
 
     directory = sys.argv[1]
+    min_contig_length = int(sys.argv[2])
+    min_alignment_length = min_contig_length / 2
 
     os.system('killall exonerate-server &> /dev/null')
 
     # assembly.SRR535750.m50f0q30.uniq.k41.kt9.mo45.ao45-contigs.fa
-    p = re.compile("assembly.SRR535750.m50f0q30.uniq.k(\d+).kt(\d+).mo(\d+).ao(\d+)-contigs.fa")
+    #p = re.compile("assembly.SRR535750.m50f0q30.uniq.k(\d+).kt(\d+).mo(\d+).ao(\d+)-contigs.fa")
+    p = re.compile("assembly.[^.]+.m\d+f\d+q\d+.uniq.k(\d+).kt(\d+).mo(\d+).ao(\d+)-contigs.fa")
     delim = "\t"
-    read_length = 50
-    contig_threshold = 200
 
     fields = ["k","kmer_threshold","merge_overlap","assemble_overlap",
               "num_contigs","perfect_contigs","total_sequence","aligned_sequence",
@@ -162,7 +162,7 @@ def main() :
 
         #d = dict(zip(['k','kt','mo','ao'], map(int, m.groups())))
         contigs = readall(f)
-        contigs = filter(lambda x : len(x) >= contig_threshold, contigs)
+        contigs = filter(lambda x : len(x) >= min_contig_length, contigs)
 
         # XXX debug
         contigs = contigs[:3]
@@ -170,7 +170,8 @@ def main() :
 
         #v = map(int, list(m.groups()))
         v = list(m.groups())
-        num_contigs, perfect_contigs, sequence, aligned, coverage = proportion_aligned(exonerate, contigs, transcriptome_length)
+        num_contigs, perfect_contigs, sequence, aligned, coverage = \
+                proportion_aligned(exonerate, contigs, transcriptome_length, min_alignment_length)
         v.append(num_contigs)
         v.append(perfect_contigs)
         v.append(sequence)
