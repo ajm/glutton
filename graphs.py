@@ -88,6 +88,7 @@ def proportion_aligned(exonerate, contigs, total_transcriptome_length, min_align
     total_aligned = 0
     total_sequence = 0
     perfect_contigs = 0
+    perfect_sequence = 0
 
     match_ranges = {}
 
@@ -105,6 +106,7 @@ def proportion_aligned(exonerate, contigs, total_transcriptome_length, min_align
 
             if aligned == len(contig) :
                 perfect_contigs += 1
+                perfect_sequence += aligned
 
             # alignment may be on the negative strand
             # but all this code assumes that for range (a,b)
@@ -119,7 +121,7 @@ def proportion_aligned(exonerate, contigs, total_transcriptome_length, min_align
     #print print_ranges(match_ranges)
     coverage = sum_ranges(match_ranges) / float(total_transcriptome_length)
 
-    return (len(contigs), perfect_contigs, total_sequence, total_aligned, coverage)
+    return (len(contigs), perfect_contigs, total_sequence, perfect_sequence, total_aligned, coverage)
 
 def main() :
     if len(sys.argv) != 4 :
@@ -138,8 +140,9 @@ def main() :
     delim = "\t"
 
     fields = ["k","kmer_threshold","merge_overlap","assemble_overlap",
-              "num_contigs","perfect_contigs","total_sequence","aligned_sequence",
-              "n50","coverage","prop_perfect","prop_aligned"]
+              "num_contigs","total_sequence","perfect_contigs","perfect_sequence",
+              "aligned_sequence","n50","coverage",
+              "prop_perfect_contigs","prop_perfect_sequence","prop_aligned"]
 
     print delim.join(fields)
 
@@ -165,20 +168,22 @@ def main() :
         contigs = filter(lambda x : len(x) >= min_contig_length, contigs)
 
         # XXX debug
-        contigs = contigs[:3]
+        #contigs = contigs[:3]
         # XXX debug
 
         #v = map(int, list(m.groups()))
         v = list(m.groups())
-        num_contigs, perfect_contigs, sequence, aligned, coverage = \
+        num_contigs, perfect_contigs, sequence, perfect_sequence, aligned, coverage = \
                 proportion_aligned(exonerate, contigs, transcriptome_length, min_alignment_length)
         v.append(num_contigs)
-        v.append(perfect_contigs)
         v.append(sequence)
+        v.append(perfect_contigs)
+        v.append(perfect_sequence)
         v.append(aligned)
         v.append(n50(contigs, sequence))
         v.append(coverage)
         v.append(perfect_contigs / float(num_contigs))
+        v.append(perfect_sequence / float(sequence))
         v.append(aligned / float(sequence))
 
         print delim.join(map(str, v))
