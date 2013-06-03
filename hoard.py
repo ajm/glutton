@@ -1,24 +1,41 @@
 import sys
 import os
 import getopt
-import signal
 
-from lib.cache import TranscriptCache, EnsemblInfo
+from lib.subcommands import build, fix, assemble, align, debug, list_ensembl
+from lib.system import System
+from lib.cache import EnsemblInfo
 
-
-cache = None
-
-databases = {'ensembl' : { 
+databases = {
+             'ensembl' : { 
                 'db-host' : 'ensembldb.ensembl.org', 
                 'db-port' : 5306,
                 'db-user' : 'anonymous',
                 'db-pass' : '' },
-             'ensembl-metazoa' : {
+             'ensembl-genomes' : {
                 'db-host' : 'mysql.ebi.ac.uk',
                 'db-port' : 4157,
                 'db-user' : 'anonymous',
                 'db-pass' : '' }
              }
+
+commands = {
+            'build'     : build,
+            'fix'       : fix,
+            'assemble'  : assemble,
+            'align'     : align,
+            'debug'     : debug,
+            'list'      : list_ensembl
+           }
+
+required_programs = {
+            'build'     : ['prank','fastareformat','fasta2esd','esd2esi'],
+            'fix'       : ['fastareformat','fasta2esd','esd2esi'],
+            'assemble'  : ['sga'],
+            'align'     : ['pagan','exonerate-server','exonerate'],
+            'debug'     : [],
+            'list'      : []
+           }
 
 def get_default_options() :
     return {
@@ -28,7 +45,7 @@ def get_default_options() :
             'list'       : None,
             'workingdir' : os.path.join(os.getcwd(), 'cache'),
             'tmpdir'     : os.environ.get('TMPDIR', '/tmp'),
-            'resume'     : False,
+            'restart'    : False,
             'verbose'    : False,
             'species2'   : None,
             'db-host'    : None,
@@ -36,13 +53,21 @@ def get_default_options() :
             'db-user'    : None,
             'db-pass'    : None,
             'prank'      : 'prank',
-            'prank-threads' : 1,
-            'alignment-only' : False
+            'pagan'      : 'pagan',
+            'sga'        : 'sga',
+            'exonerate'  : 'exonerate',
+            'threads'    : 1,
+            'alignment-only' : False,
+            'force'      : False
            }
 
-def predefined_databases() :
-    global databases
-    return ', '.join(map(lambda x : "'%s'" % x, databases.keys()))
+def get_commands() :
+    global commands
+    tmp = commands.keys() 
+
+    tmp.remove('debug')
+
+    return tmp
 
 def fill_in_database_info(options) :
     global databases
@@ -76,42 +101,83 @@ def parse_database_string(db_string, options) :
     options['db-pass'] = db_fields[3]
     options['database'] = 'user-defined'
 
-def clean_up() :
-    global cache
+def bold(s) :
+    return "\033[1m%s\033[0m" % s
 
-    if cache :
-        if not cache.stop :
-            cache.stop = True
-            print >> sys.stderr, "\n[!] Application will shutdown after the next gene family is downloaded or user types '^C' again...\n"
-            return
+def bold_all(l) :
+    return map(bold, l)
 
-    print >> sys.stderr, "\n[!] Forced exit from user..."
-    sys.exit(0)
+def quote(s) :
+    return "'%s'" % s
 
-def handler_sigint(signal, frame) :
-    clean_up()
+def quote_all(l) :
+    return map(quote, l)
+
+def list_sentence(l) :
+    if len(l) < 2 :
+        return "".join(l)
+    return "%s and %s" % (', '.join(l[:-1]), l[-1])
+
+def pretty(l) :
+    return list_sentence(bold_all(quote_all(sorted(l))))
+
+def get_required_programs() :
+    tmp = set()
+
+    for i in required_programs :
+        tmp.update(required_programs[i])
+
+    return sorted(list(tmp))
 
 def usage() :
+    global databases
+
     options = get_default_options()
 
-    print >> sys.stderr, """Usage: %s [OPTIONS]
+    print >> sys.stderr, """Usage: %s command [OPTIONS]
+
+Legal commands are %s (see below for options).
+%s assumes that the following programs are installed: %s.
+
+Mandatory:
+    -s      --species='species'     (no default, use --list for options)
+
+%s options:
+    -l      --list                  (list species and release versions from current database)
     -d      --database='db string'  (default = '%s', valid arguments : %s)
-    -s      --species='species'     (no default, see output of --list for options)
-    -o      --species2='species'    (default = None, only specify if you want orthologs from species2)
     -r      --release='release'     (default = latest)
+    -a      --alignment-only        (default = False, assumes --restart is not used)
+            --restart               (default = False, start downloading from scratch)
+            --specify-db='db info'  ('db info' is comma separated host, port, username, password)
+
+%s options:
+    -l      --list                  (list downloaded species and release versions)
+
+%s options:
+            --prank='location'      (default = None, use system-wide version)
+            --exonerate='location'  (default = None, use system-wide version)
+            --sga='location'        (default = None, use system-wide version)
+            --pagan='location'      (default = None, use system-wide version)
+
     -w      --workingdir='dir'      (default = %s)
     -t      --tmpdir='dir'          (default = %s)
-    -p      --prank='location'      (default = None, use system-wide version)
-    -q      --prank-threads=NUM     (default = %d)
-    -a      --alignment-only        (default = %s, assumes --continue)
-    -c      --continue              (default = %s, don't start from scratch, but resume download)
-    -l      --list
-    -x      --specify-db='db info'  ('db info' is comma separated host, port, username, password)
+    -c      --threads=NUM           (default = %s)
+    
     -v      --verbose
     -h      --help
-""" % (sys.argv[0], options['database'], predefined_databases(),
-        options['workingdir'], options['tmpdir'], options['prank-threads'], 
-        options['alignment-only'], options['resume'])
+""" % (
+        sys.argv[0], 
+        pretty(get_commands()),
+        sys.argv[0],
+        pretty(get_required_programs()),
+        bold('build'),
+        options['database'], 
+        pretty(databases.keys()),
+        bold('align'),
+        bold('misc'),
+        options['workingdir'], 
+        options['tmpdir'],
+        options['threads'])
 
 def expect_int(parameter, argument) :
     try :
@@ -122,36 +188,39 @@ def expect_int(parameter, argument) :
         usage()
         sys.exit(-1)
 
-def parse_args() :
+def parse_args(argv) :
     global databases
 
     options = get_default_options()
 
     try :
         opts,args = getopt.getopt(
-                        sys.argv[1:],
-                        "s:o:r:hvlw:t:ad:x:p:q:c",
+                        argv,
+                        "s:ld:r:a:w:t:c:vhf",
                         [   
                             "species=", 
                             "species2=",
-                            "relsease=",
+                            "release=",
                             "workingdir=",
                             "tmpdir=",
                             "list",
                             "verbose", 
                             "help",
-                            "continue",
+                            "restart",
                             "database=",
                             "specify-db=",
                             "prank=",
-                            "prank-threads=",
-                            "alignment-only"
+                            "pagan=",
+                            "sga=",
+                            "exonerate=",
+                            "threads=",
+                            "alignment-only",
+                            "force"
                         ]
                     )
 
     except getopt.GetoptError, err :
-        print >> sys.stderr, str(err) + "\n"
-        usage()
+        print >> sys.stderr, str(err) + " (see --help for more details)"
         sys.exit(-1)
 
     for o,a in opts :
@@ -180,75 +249,67 @@ def parse_args() :
         elif o in ('-r', '--release') :
             options['release'] = expect_int("release", a)
 
-        elif o in ('-c', '--continue') :
-            options['resume'] = True
+        elif o in ('--restart') :
+            options['restart'] = True
 
         elif o in ('-a', '--alignment-only') :
             options['alignment-only'] = True
-            options['resume'] = True
 
         elif o in ('-d', '--database') :
-            if a not in databases.keys() :
-                print >> sys.stderr, "Error: '%s' is not a predefined database, valid strings are : %s" % (a, predefined_databases())
-                sys.exit(-1)
-
             options['database'] = a
 
-        elif o in ('-x', '--specify-db') :
+        elif o in ('--specify-db') :
             parse_database_string(a, options)
 
-        elif o in ('-p', '--prank') :
-            options['prank'] = a
+        elif o in ('--prank', '--pagan', '--exonerate', '--sga') :
+            options[o[2:]] = a
 
-        elif o in ('-q', '--prank-threads') :
-            options['prank-threads'] = expect_int("prank-threads", a)
+        elif o in ('-c', '--threads') :
+            options['threads'] = expect_int("threads", a)
+
+        elif o in ('-f', '--force') :
+            options['force'] = True
 
         else :
             assert False, "unhandled option %s" % o
 
-    return options
+    
+    # check whether option combinations make sense
+    if options['alignment-only'] and options['restart'] :
+        print >> sys.stderr, "Error: 'alignment-only' and 'restart' cannot be used together, exiting..."
+        sys.exit(-1)
 
-def main() :
-    global cache
-
-    signal.signal(signal.SIGINT, handler_sigint)
-    options = parse_args()
+    if options['database'] not in databases.keys() :
+        print >> sys.stderr, "Error: %s is not a predefined database, valid options are: %s" % (pretty([options['database']]), pretty(databases.keys()))
+        sys.exit(-1)
 
     if options['database'] != 'user-defined' :
         fill_in_database_info(options)
 
-    if options['list'] :
-        ei = EnsemblInfo(options)
-        ei.print_species_table()
-        return 0
+    return options
 
-    if options['species'] is None :
-        print >> sys.stderr, "Error: you must specify a species!"
-        return -1
+def main() :
+    global commands
 
-    if options['release'] is None :
-        ei = EnsemblInfo(options)
-        options['release'] = ei.get_latest_release(options['species'])
-        
-        if options['release'] == -1 :
-            print >> sys.stderr, "Could not find database for \'%s\', run --list command for species names" % options['species']
-            return -1
+    # a plaster over the command interface
+    if sys.argv[1] in ('-h', '--help') :
+        usage()
+        sys.exit(0)
 
-        print >> sys.stderr, "Release not specified, using release %d" % options['release']
-        
+    options = parse_args(sys.argv[2:])
 
-    cache = TranscriptCache(options)
+    if sys.argv[1] in commands :
+        System().check_local_installation(required_programs[sys.argv[1]])
+        return commands[sys.argv[1]](options)
 
-    if options['resume'] and options['alignment-only'] :
-        cache.download_complete = True
-        cache.join()
-        cache.build_exonerate_index()
-        print "Info: done!"
-    else :
-        cache.build()
-
-    return 0
+    print >> sys.stderr, "Error: command %s not recognised, valid command are %s" % \
+            (pretty([sys.argv[1]]), pretty(get_commands()))
+    return -1
 
 if __name__ == '__main__' :
-    sys.exit(main())
+    try :
+        sys.exit(main())
+
+    except KeyboardInterrupt :
+        pass
 

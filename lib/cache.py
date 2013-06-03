@@ -22,6 +22,46 @@ from lib.datatypes import Sequence
 from lib.filetypes import FastqFile
 
 
+class EnsemblDbInfo(object) :
+    def __init__(self, db_name, low_release, high_release) :
+        self.db_name = db_name
+        self.latin_name = self._db2latin(self.db_name)
+        self.common_name = self._latin2common(self.latin_name)
+        self.low_release = low_release
+        self.high_release = high_release
+        self.release_str = "%d-%d" % (self.low_release, self.high_release)
+
+        #print "%s %s %s" % (self.db_name, self.latin_name, self.common_name)
+
+    def _db2latin(self, db_name) :
+        tmp = Species.getSpeciesName(db_name)
+        
+        if tmp != 'None' :
+            return tmp
+
+        return db_name.capitalize().replace('_', ' ')
+
+    def _latin2common(self, latin_name) :
+        try :
+            return Species.getCommonName(latin_name)
+        except :
+            pass
+
+        tokens = latin_name.lower().split()
+
+        if len(tokens) == 2 :
+            return tokens[0][0].capitalize() + "." + tokens[1]
+
+        raise Exception("Bad latin name: %s" % latin_name)
+
+    def table_str(self, latin_width, common_width, release_width) :
+        return self.latin_name.rjust(latin_width) + \
+               self.common_name.rjust(common_width) + \
+               self.release_str.rjust(release_width)
+    
+    def __str__(self) :
+        return "%s %s %s %s" % (self.latin_name, self.common_name, self.release_str, self.db_name)
+
 class EnsemblInfo(object) :
     def __init__(self, options) :
         self.db_host = options['db-host']
@@ -29,16 +69,18 @@ class EnsemblInfo(object) :
         self.db_user = options['db-user']
         self.db_pass = options['db-pass']
 
+        self.verbose = options['verbose']
+
+        self.databases = self._get_databases()
+
     def _convert_to_range(self, releases) :
         releases.sort()
         return "%d-%d" % (releases[0], releases[-1])
 
-    def _get_latest_release_versions(self, only_latest=False) :
-        #showdb = "mysql -h ensembldb.ensembl.org -u anonymous -P5306 -B -e 'SHOW DATABASES;'"
-        #showdb = "mysql -h mysql.ebi.ac.uk -u anonymous -P4157 -B -e 'SHOW DATABASES;'"
+    def _get_databases(self) :
         passwd = "" if self.db_pass == "" else "-p %s" % self.db_pass
         showdb = "mysql -h %s -u %s -P %d %s -B -e 'SHOW DATABASES;'" % (self.db_host, self.db_user, self.db_port, passwd)
-        
+
         stat,output = commands.getstatusoutput(showdb)
 
         if stat != 0 :
@@ -49,7 +91,7 @@ class EnsemblInfo(object) :
         db2rel = {}
 
         for dbdesc in output.split('\n') :
-            if "core" in dbdesc :
+            if "core" in dbdesc : 
                 m = dbpat.match(dbdesc)
                 if (m != None) and (len(m.groups()) == 3) :
                     dbname,chaff,dbrel = m.groups()
@@ -60,54 +102,63 @@ class EnsemblInfo(object) :
                     else :
                         # in the case of the ensembl-metazoa species
                         db2rel[dbname].append(int(chaff[:-1]))
-                #else :
-                #    if "core" in dbdesc :
-                #        print "rejected", dbdesc
+
+        databases = {}
 
         for dbname in db2rel :
-            if only_latest :
-                db2rel[dbname] = max(db2rel[dbname])
-            else :
-                db2rel[dbname] = self._convert_to_range(db2rel[dbname])
+            try :
+                databases[dbname] = EnsemblDbInfo(dbname, min(db2rel[dbname]), max(db2rel[dbname]))
+                
+                # add to pycogent as well
+                if Species.getSpeciesName(databases[dbname].latin_name) == 'None' :
+                    if self.verbose :
+                        print >> sys.stderr, "Info: adding '%s' to pycogent" % databases[dbname].latin_name
+                    Species.amendSpecies(databases[dbname].latin_name, databases[dbname].common_name)
+                    
+                    #print >> sys.stderr, "\t" + Species.getCommonName(databases[dbname].latin_name)
+                    #print >> sys.stderr, "\t" + Species.getEnsemblDbPrefix(databases[dbname].latin_name)
+            except :
+                if self.verbose :
+                    print >> sys.stderr, "Info: rejected '%s'" % dbname
 
-        return db2rel
+        return databases
 
     def get_latest_release(self, species) :
-        db2rel = self._get_latest_release_versions(only_latest=True)
         try :
-            return db2rel.get(Species.getEnsemblDbPrefix(species))
+            return self.databases.get(Species.getEnsemblDbPrefix(species)).high_release
         except :
-            pass
-            
-        tokens = map(lambda x : x.lower(), species.split())
-        dbname = '_'.join(tokens)
- 
-        return db2rel.get(dbname, -1)
+            return -1
+
+    def _calc_rjust(self, title, variable) :
+        return len(sorted([title] + map(lambda x: getattr(x, variable), self.databases.values()), key=len, reverse=True)[0]) + 2
 
     def print_species_table(self) :
-        db2rel = self._get_latest_release_versions()
-        printed = {}
+        l_len = self._calc_rjust("Name", "latin_name")
+        c_len = self._calc_rjust("Common name", "common_name")
+        r_len = self._calc_rjust("Releases", "release_str")
 
-        print "Name".rjust(32), "Common Name".rjust(18), "Releases".rjust(12)
-        print "-" * 64
+        print "Name".rjust(l_len) + "Common Name".rjust(c_len) + "Releases".rjust(r_len)
+        print "-" * (l_len + c_len + r_len)
 
         for name in Species.getSpeciesNames() :
-            dbprefix = Species.getEnsemblDbPrefix(name)
-            if db2rel.has_key(dbprefix) :
-                print name.rjust(32), 
-                print Species.getCommonName(name).rjust(18), 
-                print db2rel.get(dbprefix).rjust(12)
-                printed[dbprefix] = True
+            try :
+                print self.databases[Species.getEnsemblDbPrefix(name)].table_str(l_len, c_len, r_len)
+            except KeyError, ke :
+                pass
 
-        print "-" * 64
+    def is_valid_species(self, species) :
+        try :
+            return self.databases.has_key(Species.getEnsemblDbPrefix(species))
+        except :
+            return False
 
-        for dbprefix in sorted(db2rel.keys()) :
-            if dbprefix not in printed :
-                print dbprefix.capitalize().replace('_', ' ').rjust(32),
-                print "undefined".rjust(18),
-                print db2rel.get(dbprefix).rjust(12),
-                print dbprefix.rjust(30)
+    def is_valid_release(self, species, release) :
+        if not self.is_valid_species(species) :
+            return False
 
+        tmp = self.databases[Species.getEnsemblDbPrefix(species)]
+
+        return (release >= tmp.low_release) and (release <= tmp.high_release)
 
 class TranscriptCache(object) :
     file_manifest = 'manifest'
@@ -125,13 +176,13 @@ class TranscriptCache(object) :
         self.release = options['release']
         self.account = HostAccount(options['db-host'], options['db-user'], options['db-pass'], port=options['db-port'])
         self.basedir = os.path.join(self.workingdir, str(self.release), self.species)
-        self.resume = options['resume']
+        self.restart = options['restart']
         self.database = options['database'] # this is necessary for a hack used later
 
         self.prank = options['prank']
 
-        self._is_valid_species()
-        #Species.amendSpecies("Tribolium castaneum", "T.castaneum")
+        self.species = Species.getCommonName(self.species)
+        self.basedir = os.path.join(self.workingdir, str(self.release), self.species)
 
         self._check_directory(self.tmpdir, create=True)
         self._check_directory(self.workingdir, create=True)
@@ -141,7 +192,7 @@ class TranscriptCache(object) :
         self.genes = set()
 
         # alignments are handled in multiple threads
-        self.prank_threads = options['prank-threads'] if options['prank-threads'] > 0 else 1
+        self.prank_threads = options['threads'] if options['threads'] > 0 else 1
         self.alignment_queue = Queue.Queue()
 
         self.alignment_threads = []
@@ -157,7 +208,7 @@ class TranscriptCache(object) :
         self.manifest_thread = threading.Thread(target=self._consume_manifest_queue)
         self.manifest_thread.daemon = True
 
-        if not self.resume :
+        if self.restart :
             self._reset_cache()
         else :
             self._verify_manifest()
@@ -165,6 +216,11 @@ class TranscriptCache(object) :
         for t in self.alignment_threads :
             t.start()
         self.manifest_thread.start()
+
+    def fix(self) :
+        self.build_exonerate_index()
+        # TODO would be better to attempt to use exonerate index 
+        # (fails if index is built on another OS)
 
     def shutdown(self) :
         self.stop = True
@@ -185,26 +241,6 @@ class TranscriptCache(object) :
             t.join()
 
         self.manifest_thread.join()
-
-    # this is a hack, but will often work
-    def latin2common(self, latin_name) :
-        tokens = latin_name.lower().split()
-        return tokens[0][0].capitalize() + "." + tokens[1]
-
-    def _is_valid_species(self) :
-        try :
-            Species.getCommonName(self.species)
-            return
-
-        except :
-            if 'collection' in self.species.lower() :
-                print >> sys.stderr, "Error: species containing the word 'collection' do not work..."
-                sys.exit(-1)
-
-        common = self.latin2common(self.species)
-        print >> sys.stderr, "Info: Requested species '%s' not found in pycogent, adding as '%s' (this might not work...)" % (self.species, common)
-        
-        Species.amendSpecies(self.species, common)
 
     def _consume_alignment_queue(self) :
         while not self.stop :
@@ -516,20 +552,22 @@ class TranscriptCache(object) :
         print "Info: aligned sequences in %s" % os.path.basename(infile)
 
     def build(self) :
-        if self.resume :
-            print "Info: resuming..."
-
         print "Info: enumerating gene families in %s release %d" % (self.species, self.release)
         genome = Genome(self.species, Release=self.release, account=self.account)
         
-        if self.species2 is None :
-            compara = Compara([self.species], Release=self.release, account=self.account)
-        else :
-            compara = Compara([self.species, self.species2], Release=self.release, account=self.account)
+        if (self.species2 != None) and (self.database != 'ensembl') :
+            print >> sys.stderr, "Warning: --species2 options can only be used with species found in ensembl-metazoa!"
+
+        species_list = [self.species]
+
+        if self.species2 is not None :
+            species_list.append(self.species2)
 
 
+        compara = Compara(species_list, Release=self.release, account=self.account)
 
-        # DON'T DO THIS AT HOME!
+
+        # DON'T TRY THIS AT HOME!
         #
         # what happens is it searches for compara databases, but unfortunately finds more than one
         # in this situation pycogent just connects to the first one, which is always compara_bacteria
@@ -537,7 +575,7 @@ class TranscriptCache(object) :
         # to the correct database ... obviously not the best solution, but at 6 lines of code definitely 
         # the shortest ;-P
         #
-        if self.database == 'ensembl-metazoa' :
+        if self.database == 'ensembl-genomes' :
             from cogent.db.ensembl.host import DbConnection
             from cogent.db.ensembl.name import EnsemblDbName
             import sqlalchemy
@@ -545,11 +583,10 @@ class TranscriptCache(object) :
             new_db_name = EnsemblDbName(compara.ComparaDb.db_name.Name.replace('bacteria', 'metazoa'))
             compara.ComparaDb._db = DbConnection(account=self.account, db_name=new_db_name)
             compara.ComparaDb._meta = sqlalchemy.MetaData(compara.ComparaDb._db)
-        # end of DON'T DO THIS AT HOME!
+        # end of DON'T TRY THIS AT HOME!
 
 
         skipped = 0
-
         for gene in genome.getGenesMatching(BioType='protein_coding') :
             stableid = gene.StableId.lower()
 
@@ -581,7 +618,12 @@ class TranscriptCache(object) :
 
             self._add_to_manifest_queue(fname, fcontents, len(paralog_seqs) >= 2)
 
-            print "Info: %s - %d genes in family (%s)" % (stableid, len(paralog_seqs), fname)
+            print "Info: %s - %d gene%s in family (%s)" % (stableid, len(paralog_seqs), "s" if len(paralog_seqs) > 1 else "", fname)
+
+            
+            # XXX
+            if len(self.genes) > 20 :
+                break
 
 
             if self.species2 is not None :
@@ -614,7 +656,7 @@ class TranscriptCache(object) :
                 break
 
 
-        if self.resume :
+        if (not self.restart) and (skipped != 0) :
             print "Info: skipped over %d genes that had already been downloaded." % skipped
 
 
@@ -625,6 +667,9 @@ class TranscriptCache(object) :
             self.download_complete = True
             self.join()
             self.build_exonerate_index()
+
+            self._write_file('done', '')
+
             print "Info: done!"
 
     def build_exonerate_index(self) :
@@ -682,16 +727,16 @@ class TranscriptCache(object) :
             sys.exit(-1)
 
         # build the database
-        command = 'fasta2esd %s %s' % (fa_name, db_name)
-        print "Info: building exonerate database (%s)" % command
+        command = 'fasta2esd %s %s &> /dev/null' % (fa_name, db_name)
+        print "Info: building exonerate database" #(%s)" % command
         ret = os.system(command)
         if ret != 0 :
             print >> sys.stderr, "Error: fasta2esd returned error code %d" % ret
             sys.exit(-1)
 
         # build the index
-        command = 'esd2esi %s %s' % (db_name, in_name)
-        print "Info: creating exonerate database index (%s)" % command
+        command = 'esd2esi %s %s &> /dev/null' % (db_name, in_name)
+        print "Info: creating exonerate database index" #(%s)" % command
         ret = os.system(command)
         if ret != 0 :
             print >> sys.stderr, "Error: esd2esi returned error code %d" % ret
