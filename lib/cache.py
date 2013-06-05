@@ -20,7 +20,9 @@ from lib.progress import Progress
 from lib.tools import Prank, PrankError
 from lib.datatypes import Sequence
 from lib.filetypes import FastqFile
+from lib.manifest import Manifest, ManifestError
 
+from lib.base import Base
 
 class EnsemblDbInfo(object) :
     def __init__(self, db_name, low_release, high_release) :
@@ -160,8 +162,76 @@ class EnsemblInfo(object) :
 
         return (release >= tmp.low_release) and (release <= tmp.high_release)
 
+class EnsemblDownloader(Base) :
+    def __init__(self, opt) :
+        super(EnsemblDownloader, self).__init__(opt)
+        
+        self.species = opt['species']
+        self.release = opt['release']
+        self.account = HostAccount(
+                            opt['db-host'], 
+                            opt['db-user'], 
+                            opt['db-pass'], 
+                            port=opt['db-port']
+                         )
+        self.genes = set()
+
+    def set_already_downloaded(self, genes) :
+        self.genes.update(genes)
+
+    def __iter__(self) :
+        return self.genefamilies()
+
+    def genefamilies(self) :
+        genome = Genome(self.species, Release=self.release, account=self.account)
+        compara = Compara([self.species], Release=self.release, account=self.account)
+
+        self.warn("current version only works with species in ensembl and ensembl-metazoa")
+
+        # DON'T TRY THIS AT HOME!
+        #
+        # what happens is it searches for compara databases, but unfortunately finds more than one
+        # in this situation pycogent just connects to the first one, which is always compara_bacteria
+        # so one solution is to dig through all the compara objects internals to provide a connection
+        # to the correct database ... obviously not the best solution, but at 6 lines of code definitely 
+        # the shortest ;-P
+        #
+        if self.database == 'ensembl-genomes' :
+            from cogent.db.ensembl.host import DbConnection
+            from cogent.db.ensembl.name import EnsemblDbName
+            import sqlalchemy
+
+            new_db_name = EnsemblDbName(compara.ComparaDb.db_name.Name.replace('bacteria', 'metazoa'))
+            compara.ComparaDb._db = DbConnection(account=self.account, db_name=new_db_name)
+            compara.ComparaDb._meta = sqlalchemy.MetaData(compara.ComparaDb._db)
+        # end of DON'T TRY THIS AT HOME!
+
+        for gene in genome.getGenesMatching(BioType='protein_coding') :
+            stableid = gene.StableId.lower()
+
+            # ignore genes that have already been seen as members of
+            # gene families
+            if stableid in self.genes :
+                continue
+
+            self.genes.add(stableid)
+
+            # get cds sequences of any paralogs
+            paralogs = compara.getRelatedGenes(StableId=stableid, Relationship='within_species_paralog')
+
+            paralog_seqs = {}
+            if paralogs is None :
+                paralog_seqs[stableid] = gene.getLongestCdsTranscript().Cds
+            else :
+                for paralog in paralogs.Members :
+                    paralog_id = paralog.StableId.lower()
+                    self.genes.add(paralog_id)
+                    paralog_seqs[paralog_id] = paralog.getLongestCdsTranscript().Cds
+
+            yield paralog_seqs
+
+
 class TranscriptCache(object) :
-    file_manifest = 'manifest'
     file_prefix = 'paralog_'
     queue_timeout = 1
 
@@ -185,9 +255,7 @@ class TranscriptCache(object) :
         self.basedir = os.path.join(self.workingdir, str(self.release), self.species)
 
         self._check_directory(self.tmpdir, create=True)
-        self._check_directory(self.workingdir, create=True)
-        self._check_directory(os.path.join(self.workingdir, str(self.release)), create=True)
-        self._check_directory(os.path.join(self.workingdir, str(self.release), self.species), create=True)
+        self._check_directory(self.basedir, create=True)
 
         self.genes = set()
 
@@ -210,8 +278,17 @@ class TranscriptCache(object) :
 
         if self.restart :
             self._reset_cache()
-        else :
-            self._verify_manifest()
+        
+        try :
+            self.manifest = Manifest(options, self.basedir, self.file_prefix)
+            self.genes = self.manifest.get_genes()
+            
+            for fname in self.manifest.get_realignments() :
+                self._add_to_alignment_queue(os.path.join(self.basedir, fname))
+
+        except ManifestError, me :
+            print >> sys.stderr, str(me)
+            sys.exit(-1)
 
         for t in self.alignment_threads :
             t.start()
@@ -283,9 +360,6 @@ class TranscriptCache(object) :
 
         print "Info: manifest thread finished"
 
-    def _md5(self, s) :
-        return hashlib.md5(s).hexdigest()
-        
     def _contents(self, fname) :
         s = ""
         f = open(fname)
@@ -297,13 +371,7 @@ class TranscriptCache(object) :
         return s
 
     def _write_file(self, filename, filecontents) :
-        manifestdata = self._md5(filecontents)
-        
-        # write md5 hash to the end of the manifest file
-        f = open(self.manifest_name, 'a')
-        print >> f, "%s %s" % (filename, manifestdata)
-        os.fsync(f)
-        f.close()
+        self.manifest.append_to_manifest(filename, filecontents)
 
         # write the actual file, we don't care if this gets interrupted
         # because then it will be discovered by recalculating the hash
@@ -357,174 +425,11 @@ class TranscriptCache(object) :
     def _swap_dirname(self, fname, directory=None) :
         return os.path.join(self.basedir if not directory else directory, os.path.basename(fname))
 
-    def _file_md5(self, fname) :
-        return self._md5(self._contents(fname))
-
-    def _file_md5_and_genes(self, fname) :
-        md = md5.new()
-        tmp = []
-        f = open(fname)
-
-        for line in f :
-            md.update(line)
-            
-            if line.startswith('>') :
-                tmp.append(line.strip()[1:])
-
-        f.close()
-        return md.hexdigest(), tmp
-
-    @property
-    def manifest_name(self) :
-        return os.path.join(self.basedir, type(self).file_manifest)
-
-    def _verify_manifest(self) :
-        manifest_pat = re.compile("^(.+) ([" + string.ascii_lowercase + string.digits + "]{32})$") # filename + md5
-        #family_pat = re.compile("^" + type(self).file_prefix + "[" + string.ascii_letters + string.digits + "_" + "]{6}$") # filename for CDS data
-        family_pat = re.compile("^(paralog|ortholog)_[" + string.ascii_letters + string.digits + "_" + "]{6}$")
-        f2md5 = {}
-        linenum = 0
-
-        # 1. parse manifest file 
-        #    store copy in memory in f2md5
-        try :
-            f = open(self.manifest_name)
-        except IOError, ioe :
-            return
-
-        print "Info: verifying manifest file..."
-
-        for line in f :
-            linenum += 1
-            line = line.strip()
-
-            if line == '' :
-                continue
-
-            result = manifest_pat.match(line)
-
-            if not result :
-                print >> sys.stderr, "Warning: line %d in %s appears to be corrupt..." % (linenum, f.name)
-                continue
-
-            # use md5s to check for duplicates
-            fname = result.group(1)
-            md5val = result.group(2)
-
-            f2md5[fname] = md5val
-
-        f.close()
-
-
-        # 2. check md5 sums of gene families containing
-        #    CDS data (paralog_ files)
-        good_gene_families = []
-        good_orthologs = [] # these may not exist
-
-        for fname in f2md5 :
-            if not family_pat.match(fname) :
-                continue
-
-            try :
-                if self._file_md5(os.path.join(self.basedir, fname)) == f2md5[fname] :
-                    if fname.startswith("paralog_") :
-                        good_gene_families.append(fname)
-
-                    elif fname.startswith("ortholog_") :
-                        good_orthologs.append(fname)
-
-                else :
-                    print >> sys.stderr, "Info: md5 for %s was bad..." % fname
-
-            except IOError, ioe :
-                print >> sys.stderr, "Info: %s not found!" % fname
-                continue
-
-
-        # 3. for all the gene family files with good md5s
-        #    if there is more than one sequence, check that 
-        #    alignments are present and md5s match
-        good_alignments = []
-
-        for fname in good_gene_families :
-            if self._count_sequences(os.path.join(self.basedir, fname)) < 2 :
-                continue
-
-            alignment_files = map(lambda x: fname + x, [".1.dnd", ".2.dnd", ".nuc.1.fas", ".nuc.2.fas", ".pep.1.fas", ".pep.2.fas"])
-            realign = False
-
-            for align_fname in alignment_files :
-                try :
-                    if self._file_md5(os.path.join(self.basedir, align_fname)) != f2md5[align_fname] : # bad md5
-                        print >> sys.stderr, "Info: md5 for %s was bad, queuing for alignment..." % align_fname
-                        realign = True
-                        break
-                
-                except IOError, ioe : # no file to open
-                    print >> sys.stderr,  "Info: %s alignment files missing, queuing for alignment..." % fname
-                    realign = True
-                    break
-
-                except KeyError, ke : # no mention in the manifest
-                    print >> sys.stderr, "Info: md5 for %s not present in manifest, queuing for alignment..." % align_fname
-                    realign = True
-                    break
-
-            if realign :
-                self._add_to_alignment_queue(os.path.join(self.basedir, fname))
-            else :
-                good_alignments += alignment_files
-
-
-        good_files = good_gene_families + good_orthologs + good_alignments
-        # 4. rewrite manifest
-        #    XXX what if the program is killed during?
-        #    XXX os.rename is atomic on linux
-        f = open(self.manifest_name + '.tmp', 'w')
-
-        for fname in good_files :
-            if family_pat.match(fname) and fname.startswith("paralog_") :
-                self._add_genes(os.path.join(self.basedir, fname))
-            print >> f, "%s %s" % (fname, f2md5[fname])
-
-        f.close()
-
-        os.rename(self.manifest_name + '.tmp', self.manifest_name)
-
-
-        # 5. unlink chaff
-        for fname in glob.glob(os.path.join(self.basedir, '*')) :
-            basename = os.path.basename(fname)
-
-            if basename == type(self).file_manifest :
-                continue
-
-            if basename not in good_files :
-                print >> sys.stderr, "Info: removing %s ..." % basename
-                os.remove(fname)
-
-        print "Info: verification complete (%d genes in %d families)" % (len(self.genes), len(good_gene_families))
-
     def _count_sequences(self, fname) :
         count = 0
         for label,seq in MinimalFastaParser(open(fname)) :
             count += 1
         return count
-
-    def _get_genes(self, fname) :
-        f = open(fname)
-        tmp = []
-
-        for line in f :
-            if line.startswith('>') :
-                tmp.append(line.strip()[1:])
-
-        f.close()
-
-        return tmp
-
-    def _add_genes(self, fname) :
-        self.genes.update(self._get_genes(fname))
 
     def _random_filename(self) :
         return os.path.basename(tempfile.mktemp(prefix=type(self).file_prefix, dir=self.basedir))
@@ -657,7 +562,7 @@ class TranscriptCache(object) :
 
 
         if (not self.restart) and (skipped != 0) :
-            print "Info: skipped over %d genes that had already been downloaded." % skipped
+            print "Info: skipped over %d gene families that had already been downloaded." % skipped
 
 
         if self.stop :

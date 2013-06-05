@@ -280,7 +280,8 @@ def parse_args(argv) :
         sys.exit(-1)
 
     if options['database'] not in databases.keys() :
-        print >> sys.stderr, "Error: %s is not a predefined database, valid options are: %s" % (pretty([options['database']]), pretty(databases.keys()))
+        print >> sys.stderr, "Error: %s is not a predefined database, valid options are: %s" % \
+                (pretty([options['database']]), pretty(databases.keys()))
         sys.exit(-1)
 
     if options['database'] != 'user-defined' :
