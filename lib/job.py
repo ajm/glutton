@@ -3,6 +3,7 @@ import os
 from lib.base import Base
 from lib.manifest import Manifest, ManifestError
 from lib.prank import Prank
+from lib.pagan import Pagan
 
 from abc import abstractmethod
 
@@ -11,67 +12,61 @@ class JobError(Exception) :
     pass
 
 class Job(Base) :
-    QUEUED,RUNNING,SUCCESS,FAIL = range(4)
+    QUEUED,RUNNING,SUCCESS,FAIL,TERMINATED = range(5)
+
+    states = {
+        QUEUED     : 'QUEUED',
+        RUNNING    : 'RUNNING',
+        SUCCESS    : 'SUCCESS',
+        FAIL       : 'FAIL',
+        TERMINATED : 'TERMINATED'
+    }
 
     def __init__(self, opt) :
         super(Job, self).__init__(opt)
 
-        self.status = Job.QUEUED
+        self.state = Job.QUEUED
 
     def success(self) :
-        if self.status not in (Job.SUCCESS, Job.FAIL) :
+        if self.state not in (Job.SUCCESS, Job.FAIL, Job.TERMINATED) :
             raise JobError('job has not been run')
 
-        return self.status == Job.SUCCESS
+        return self.state == Job.SUCCESS
 
     def fail(self) :
         return not self.success()
 
+    def terminated(self) :
+        return self.state == Job.TERMINATED
+
     def start(self) :
-        self.status = Job.RUNNING
+        self.state = Job.RUNNING
 
     def end(self, s) :
-        assert s in (Job.SUCCESS, Job.FAIL), "status should be success or fail"
-        self.status = s
+        assert s in (Job.SUCCESS, Job.FAIL, Job.TERMINATED), "status should be success, fail or terminated"
+        self.state = s
 
     def run(self) :
         self.start()
-        self.end(Job.SUCCESS if self._run() else Job.FAIL)
+        
+        ret = self._run()
+
+        if ret == 0 :
+            self.end(Job.SUCCESS)
+        elif ret > 0 : 
+            self.end(Job.FAIL)
+        else :
+            self.end(Job.TERMINATED)
+
+    def state_str(self) :
+        return Job.states[self.state]
 
     @abstractmethod
     def _run(self) :
-        pass
-
-    def followup_jobs(self) :
-        if self.fail() :
-            raise JobError("failed jobs have no followup jobs")
-
-        return self._followup_jobs()
-
-    @abstractmethod
-    def _followup_jobs(self) :
         pass
 
     def __str__(self) :
         return "%s, %s" % (type(self).__name__, self.fname)
-
-
-class SaveJob(Job) :
-    def __init__(self, opt, manifest, fname, fcontents, align=False) :
-        super(SaveJob, self).__init__(opt)
-
-        self.manifest = manifest
-        self.fname = fname
-        self.fcontents = fcontents
-        self.align = align
-
-        assert os.path.abspath(self.fname)
-
-    def _run(self) :
-        self.manifest.append_to_manifest(self.fname, self.fcontents, create=True)
-
-    def _followup_jobs(self) :
-        return [ PrankJob(self.opt, self.manifest, self.fname) ] if self.align else []
 
 class PrankJob(Job) :
     def __init__(self, opt, manifest, fname) :
@@ -79,36 +74,45 @@ class PrankJob(Job) :
 
         self.manifest = manifest
         self.fname = fname
-        self.followup = []
 
-        assert os.path.abspath(self.fname)
+        assert os.path.isabs(self.fname) and os.path.isfile(self.fname)
 
     def _run(self) :
-        p = Prank(self.fname)
+        p = Prank(self.opt, self.fname)
 
-        if p.align() :
-            self.followup = p.outfile_filenames()
+        ret = p.run()
 
-    def _followup_jobs(self) :
-        return [ SaveJob(self.opt, self.manifest, os.path.basename(f), self._contents(f)) for f in self.followup ]
+        if ret == 0 :
+            for f in p.output_filenames() :
+                self.manifest.append_to_manifest(f, self._contents(f), create=True)
+
+        return ret
 
 class PaganJob(Job) :
-    def __init__(self, opt) :
+    def __init__(self, opt, transcriptome, fname, outdir) :
         super(PaganJob, self).__init__(opt)
 
-    def _run(self) :
-        raise NotImplementedError
+        self.fname = fname
+        self.transcriptome = transcriptome
+        self.outdir = outdir
 
-    def _followup_jobs(self) :
-        raise NotImplementedError
-
-class ExonerateJob(Job) :
-    def __init__(self, opt) :
-        super(ExonerateJob, self).__init__(opt)
+        assert os.path.isabs(self.fname)  and os.path.isfile(self.fname)
+        assert os.path.isabs(self.outdir) and os.path.isdir(self.outdir)
 
     def _run(self) :
-        raise NotImplementedError
+        root_fname, num_genes = self.transcriptome.query(self.fname)
+        a_fname = root_fname
+        t_fname = None
 
-    def _followup_jobs(self) :
-        raise NotImplementedError
+        if num_genes > 1 :
+            a_fname = root_fname + '.pep.2.fas'
+            t_fname = root_fname + '.2.dnd'
+
+        p = Pagan(self.opt,
+                  alignment_file=a_fname, 
+                  tree_file=t_fname, 
+                  query_file=self.fname,
+                  out_dir=self.outdir)
+
+        return p.run()
 

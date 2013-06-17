@@ -2,9 +2,7 @@ import sys
 import os
 import getopt
 
-from lib.subcommands import build, fix, assemble, align, debug, list_ensembl
-from lib.system import System
-from lib.cache import EnsemblInfo
+import lib.subcommands
 
 databases = {
              'ensembl' : { 
@@ -20,12 +18,12 @@ databases = {
              }
 
 commands = {
-            'build'     : build,
-            'fix'       : fix,
-            'assemble'  : assemble,
-            'align'     : align,
-            'debug'     : debug,
-            'list'      : list_ensembl
+            'build'     : lib.subcommands.build,
+            'fix'       : lib.subcommands.fix,
+            'assemble'  : lib.subcommands.assemble,
+            'align'     : lib.subcommands.align,
+            'debug'     : lib.subcommands.debug,
+            'list'      : lib.subcommands.list_ensembl
            }
 
 required_programs = {
@@ -39,26 +37,32 @@ required_programs = {
 
 def get_default_options() :
     return {
-            'database'   : 'ensembl',
-            'species'    : None,
-            'release'    : None,
-            'list'       : None,
-            'workingdir' : os.path.join(os.getcwd(), 'cache'),
-            'tmpdir'     : os.environ.get('TMPDIR', '/tmp'),
-            'restart'    : False,
-            'verbose'    : False,
-            'species2'   : None,
-            'db-host'    : None,
-            'db-port'    : None,
-            'db-user'    : None,
-            'db-pass'    : None,
-            'prank'      : 'prank',
-            'pagan'      : 'pagan',
-            'sga'        : 'sga',
-            'exonerate'  : 'exonerate',
-            'threads'    : 1,
-            'alignment-only' : False,
-            'force'      : False
+            'database'      : 'ensembl',
+            'species'       : None,
+            'release'       : None,
+            'list'          : None,
+            'workingdir'    : os.path.join(os.getcwd(), 'cache'),
+            'tmpdir'        : os.environ.get('TMPDIR', '/tmp'),
+            'restart'       : False,
+            'verbose'       : False,
+            'species2'      : None,
+            'db-host'       : None,
+            'db-port'       : None,
+            'db-user'       : None,
+            'db-pass'       : None,
+            'prank'         : 'prank',
+            'pagan'         : 'pagan',
+            'sga'           : 'sga',
+            'exonerate'     : 'exonerate',
+            'fastareformat' : 'fastareformat',
+            'fasta2esd'     : 'fasta2esd',
+            'esd2esi'       : 'esd2esi',
+            'threads'       : 1,
+            'alignment-only': False,
+            'force'         : False,
+            'contig-minlen' : 200,
+            'contig-file'   : None,
+            'contig-outdir' : None
            }
 
 def get_commands() :
@@ -78,14 +82,14 @@ def fill_in_database_info(options) :
     except KeyError, ke :
         print >> sys.stderr, "Error: '%s' is not a valid database string, valid strings are : %s" % \
                 (options['database'], ' '.join(databases.keys()))
-        sys.exit(-1)
+        sys.exit(1)
 
 def parse_database_string(db_string, options) :
     db_fields = db_string.split(',')
 
     if len(db_fields) != 4 :
         print >> sys.stderr, "Error: '%s' is an invalid database string, valid strings are in the form hostname,port,username,password" % db_string
-        sys.exit(-1)
+        sys.exit(1)
 
     # host, port, username, password
     try :
@@ -93,7 +97,7 @@ def parse_database_string(db_string, options) :
 
     except ValueError, ve :
         print >> sys.stderr, "Error: %s is not a valid port number" % db_fields[1]
-        sys.exit(-1)
+        sys.exit(1)
 
     options['db-host'] = db_fields[0]
     options['db-port'] = db_fields[1]
@@ -119,7 +123,7 @@ def list_sentence(l) :
     return "%s and %s" % (', '.join(l[:-1]), l[-1])
 
 def pretty(l) :
-    return list_sentence(bold_all(quote_all(sorted(l))))
+    return list_sentence(bold_all(quote_all(map(str, sorted(l)))))
 
 def get_required_programs() :
     tmp = set()
@@ -128,6 +132,29 @@ def get_required_programs() :
         tmp.update(required_programs[i])
 
     return sorted(list(tmp))
+
+def program_exists(programname) :
+    for p in os.environ['PATH'].split(os.pathsep) :
+        progpath = os.path.join(p, programname)
+        if os.path.isfile(progpath) :
+            # there may be another executable with the correct
+            # permissions lower down in the path, but the shell
+            # would not find it, so just return here...
+            return os.access(progpath, os.X_OK)
+
+    return False
+
+def check_local_installation(required_programs) :
+    bad = False
+
+    # ensure required programs are installed locally
+    for prog in required_programs :
+        if not program_exists(prog) :
+            print >> sys.stderr, "Error: '%s' is not installed." % prog
+            bad = True
+
+    if bad :
+        sys.exit(1)
 
 def usage() :
     global databases
@@ -139,19 +166,22 @@ def usage() :
 Legal commands are %s (see below for options).
 %s assumes that the following programs are installed: %s.
 
-Mandatory:
-    -s      --species='species'     (no default, use --list for options)
-
 %s options:
     -l      --list                  (list species and release versions from current database)
-    -d      --database='db string'  (default = '%s', valid arguments : %s)
+    -s      --species='species'     (no default, use --list for options with current database, MANDATORY)
     -r      --release='release'     (default = latest)
+    -d      --database='db string'  (default = %s, valid arguments : %s)
     -a      --alignment-only        (default = False, assumes --restart is not used)
             --restart               (default = False, start downloading from scratch)
             --specify-db='db info'  ('db info' is comma separated host, port, username, password)
 
 %s options:
     -l      --list                  (list downloaded species and release versions)
+    -s      --species='species'     (no default, use --list for options locally available, MANDATORY)
+    -r      --release='release'     (default = latest available locally)
+    -m      --min-length=NUM        (minimum length of contig to align, default = %d)
+    -i      --input='file'          (input file containing contigs, MANDATORY)
+    -o      --output='dir'          (output directory, default = location of contig file)
 
 %s options:
             --prank='location'      (default = None, use system-wide version)
@@ -162,7 +192,8 @@ Mandatory:
     -w      --workingdir='dir'      (default = %s)
     -t      --tmpdir='dir'          (default = %s)
     -c      --threads=NUM           (default = %s)
-    
+
+    -f      --force    
     -v      --verbose
     -h      --help
 """ % (
@@ -171,9 +202,10 @@ Mandatory:
         sys.argv[0],
         pretty(get_required_programs()),
         bold('build'),
-        options['database'], 
+        pretty([options['database']]),
         pretty(databases.keys()),
         bold('align'),
+        options['contig-minlen'],
         bold('misc'),
         options['workingdir'], 
         options['tmpdir'],
@@ -186,7 +218,7 @@ def expect_int(parameter, argument) :
     except ValueError, ve :
         print >> sys.stderr, "Problem parsing argument for %s: %s\n" % (parameter, str(ve))
         usage()
-        sys.exit(-1)
+        sys.exit(1)
 
 def parse_args(argv) :
     global databases
@@ -196,7 +228,7 @@ def parse_args(argv) :
     try :
         opts,args = getopt.getopt(
                         argv,
-                        "s:ld:r:a:w:t:c:vhf",
+                        "s:ld:r:a:w:t:c:vhfm:i:o:",
                         [   
                             "species=", 
                             "species2=",
@@ -215,13 +247,16 @@ def parse_args(argv) :
                             "exonerate=",
                             "threads=",
                             "alignment-only",
-                            "force"
+                            "force",
+                            "min-length=",
+                            "input=",
+                            "output="
                         ]
                     )
 
     except getopt.GetoptError, err :
         print >> sys.stderr, str(err) + " (see --help for more details)"
-        sys.exit(-1)
+        sys.exit(1)
 
     for o,a in opts :
         if o in ('-h', '--help') :
@@ -237,14 +272,11 @@ def parse_args(argv) :
         elif o in ('-s', '--species') :
             options['species'] = a
 
-        elif o in ('-o', '--species2') :
-            options['species2'] = a
-
         elif o in ('-w', '--workingdir') :
-            options['workingdir'] = a
+            options['workingdir'] = os.path.abspath(a)
 
         elif o in ('-t', '--tmpdir') :
-            options['tmpdir'] = a
+            options['tmpdir'] = os.path.abspath(a)
 
         elif o in ('-r', '--release') :
             options['release'] = expect_int("release", a)
@@ -261,8 +293,22 @@ def parse_args(argv) :
         elif o in ('--specify-db') :
             parse_database_string(a, options)
 
+        elif o in ('-m', '--min-length') :
+            options['contig-minlen'] = expect_int("min-length", a)
+
+        elif o in ('-i', '--input') :
+            options['contig-file'] = os.path.abspath(a)
+
+        elif o in ('-o', '--output-dir') :
+            options['contig-outdir'] = os.path.abspath(a)
+
         elif o in ('--prank', '--pagan', '--exonerate', '--sga') :
-            options[o[2:]] = a
+            program = o[2:]
+            options[program] = os.path.join(a, program)
+
+            if program == 'exonerate' :
+                for p in ['fastareformat', 'fasta2esd', 'esd2esi'] :
+                    options[p] = os.path.join(a, p)
 
         elif o in ('-c', '--threads') :
             options['threads'] = expect_int("threads", a)
@@ -277,15 +323,18 @@ def parse_args(argv) :
     # check whether option combinations make sense
     if options['alignment-only'] and options['restart'] :
         print >> sys.stderr, "Error: 'alignment-only' and 'restart' cannot be used together, exiting..."
-        sys.exit(-1)
+        sys.exit(1)
 
     if options['database'] not in databases.keys() :
         print >> sys.stderr, "Error: %s is not a predefined database, valid options are: %s" % \
                 (pretty([options['database']]), pretty(databases.keys()))
-        sys.exit(-1)
+        sys.exit(1)
 
     if options['database'] != 'user-defined' :
         fill_in_database_info(options)
+
+    if options['contig-file'] and not options['contig-outdir']:
+        options['contig-outdir'] = os.path.dirname(options['contig-file'])
 
     return options
 
@@ -293,19 +342,20 @@ def main() :
     global commands
 
     # a plaster over the command interface
-    if sys.argv[1] in ('-h', '--help') :
+    if (len(sys.argv) < 2) or (sys.argv[1] in ('-h', '--help', 'help')) :
         usage()
-        sys.exit(0)
+        return 0
 
     options = parse_args(sys.argv[2:])
 
     if sys.argv[1] in commands :
-        System().check_local_installation(required_programs[sys.argv[1]])
+        check_local_installation(required_programs[sys.argv[1]])
         return commands[sys.argv[1]](options)
 
     print >> sys.stderr, "Error: command %s not recognised, valid command are %s" % \
             (pretty([sys.argv[1]]), pretty(get_commands()))
-    return -1
+    
+    return 1
 
 if __name__ == '__main__' :
     try :

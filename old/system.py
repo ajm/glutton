@@ -47,7 +47,7 @@ class System(object) :
                 bad = True
 
         if bad :
-            sys.exit(-1)
+            sys.exit(1)
 
     def check_file(self, filename) :
         if not os.path.exists(filename) :
@@ -95,6 +95,6 @@ class System(object) :
                 bad = True
 
         if bad :
-            sys.exit(-1)
+            sys.exit(1)
 
 

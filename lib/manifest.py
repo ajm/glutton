@@ -19,28 +19,33 @@ class ManifestError(Exception) :
 class Manifest(Base) :
     manifest_name = 'manifest'
 
-    def __init__(self, opt, dir, prefix) :
+    def __init__(self, opt, dir, prefix, db_name, skip_checks=False) :
         super(Manifest, self).__init__(opt)
 
         self.dir = dir
-        self.filename = join(self.dir, type(self).manifest_name)
+        self.name = join(self.dir, self.manifest_name)
+        self.db_name = db_name
 
         self.manifest_pat = re.compile("^(.+) ([%s]{32})$" % (string.ascii_lowercase + string.digits)) # filename + md5
         self.family_pat = re.compile("^%s[%s]{6}$" % (prefix, string.ascii_letters + string.digits + "_"))
 
         self.lock = threading.Lock()
 
+        self.genes = set()
+        self.realign = []
+
+        if skip_checks :
+            return
+
         try :
             self.genes, self.realign = self._validate()
 
         except ManifestError, me :
-            self.genes = set()
-            self.realign = []
             self._create_manifest()
 
     def _create_manifest(self) :
         try :
-            open(self.filename, 'w').close()
+            open(self.name, 'w').close()
 
         except IOError, ioe :
             raise ManifestError("could not create manifest file in %s: %s" % (self.dir, ioe.strerror))
@@ -48,15 +53,30 @@ class Manifest(Base) :
     def get_genes(self) :
         return self.genes
 
+    def realignments_required(self) :
+        return len(self.realign) != 0
+
     def get_realignments(self) :
-        return self.realign 
+        return [os.path.join(self.dir, f) for f in self.realign]
 
     def append_to_manifest(self, fname, fcontents, create=True) :
-        manifestdata = self._md5(fcontents)
+        try :
+            self._append_to_manifest(fname, fcontents, create)
+            return True
+
+        except IOError, ioe :
+            self.error(str(ioe))
+            sys.exit(1)
+
+    def _append_to_manifest(self, fname, fcontents, create) : 
+        if fcontents :
+            manifestdata = self._md5(fcontents)
+        else :
+            manifestdata = self._file_md5(join(self.dir, fname))
 
         self.lock.acquire()
 
-        f = open(self.filename, 'a')
+        f = open(self.name, 'a')
         print >> f, "%s %s" % (os.path.basename(fname), manifestdata)
         os.fsync(f)
         f.close()
@@ -66,11 +86,7 @@ class Manifest(Base) :
         # write the actual file, we don't care if this gets interrupted
         # because then it will be discovered by recalculating the hash
         if create :
-            self._create_file(fname, fcontents, self.dir)
-
-    @property
-    def name(self) :
-        return join(self.dir, type(self).manifest_name)
+            self._create_file(os.path.basename(fname), fcontents, self.dir)
 
     def _load(self) :
         tmp = {}
@@ -110,8 +126,13 @@ class Manifest(Base) :
     def _check_hashes(self, f2md5) :
         tmp = []
         
+        count = 0
+        total = float(len(f2md5)) / 100
+
         for fname in f2md5 :
             if not self.family_pat.match(fname) :
+                count += 1
+                self.progress('validating gene families', count / total)
                 continue  
 
             try :
@@ -123,8 +144,11 @@ class Manifest(Base) :
 
             except IOError, ioe :
                 self.warn("%s not found!" % fname)
-                continue
+
+            count += 1
+            self.progress('validating gene families', count / total)
         
+        self.info('validating gene families done.')
         return tmp
 
     def _check_alignments(self, f2md5, gene_families) :
@@ -133,7 +157,13 @@ class Manifest(Base) :
 
         alignment_suffixes = [".1.dnd", ".2.dnd", ".nuc.1.fas", ".nuc.2.fas", ".pep.1.fas", ".pep.2.fas"]
 
+        count = 0
+        total = float(len(gene_families)) / 100
+
         for fname in gene_families :
+            count += 1
+            self.progress('validating alignments', count / total)
+
             if self._count_seqs(fname) < 2 :
                 continue
 
@@ -158,6 +188,8 @@ class Manifest(Base) :
             else :
                 aligned += alignment_files
 
+        self.info('validating alignments done.')
+
         return aligned, realign
 
     def _rewrite(self, f2md5, filenames) :
@@ -174,7 +206,13 @@ class Manifest(Base) :
         for fname in glob(join(self.dir, '*')) :
             basename = os.path.basename(fname)
 
-            if basename == type(self).manifest_name :
+            if basename == self.manifest_name :
+                continue
+
+            if basename == 'done' :
+                continue
+
+            if basename.startswith(self.db_name) :
                 continue
 
             if basename not in good_files :
@@ -203,6 +241,7 @@ class Manifest(Base) :
         return tmp
 
     def _file_md5(self, fname) :
+        assert os.path.isabs(fname)
         return self._md5(self._contents(fname))
 
     def _md5(self, s) :

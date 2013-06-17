@@ -2,8 +2,11 @@ import sys
 import signal
 import os
 
-from lib.cache import EnsemblInfo, TranscriptCache
+from lib.ensembl import EnsemblInfo
 from lib.local import LocalInfo
+from lib.transcriptome import Transcriptome
+from lib.queue import WorkQueue
+
 
 def check_local(opt, fill_in_release=False) :
     return _check_generic(opt, LocalInfo(opt), fill_in_release)
@@ -26,13 +29,8 @@ def _check_generic(opt, info, fill_in_release) :
         print >> sys.stderr, "Error: '%s' is an invalid species" % opt['species']
         return False
 
-    # check species2 if non-None
-#    if (opt['species2'] is not None) and (not info.is_valid_species(opt['species2'])) :
-#        print >> sys.stderr, "Error: '%s' is an invalid species" % opt['species2']
-#        return False
-
+    # get latest version
     if opt['release'] is None and fill_in_release :
-        # get latest version
         opt['release'] = info.get_latest_release(opt['species'])
 
         if opt['release'] == -1 :
@@ -50,60 +48,53 @@ def _check_generic(opt, info, fill_in_release) :
     return True
 
 def build(opt) :
-    cache = None
-    
+    t = None
+
     def build_cleanup(signal, frame) :
-        if cache :
-            if not cache.stop :
-                cache.stop = True
+        if t :
+            if not t.is_cancelled() :
+                t.stop()
                 print >> sys.stderr, "\n[!] Application will shutdown after the next gene family is downloaded or user types '^C' again...\n"
                 return
 
         print >> sys.stderr, "\n[!] Forced exit from user..."
-        sys.exit(0)
+        os._exit(0)
 
     # list remote targets
     if opt['list'] :
         return list_ensembl(opt, local=False)
 
     if not check_remote(opt, fill_in_release=True) :
-        return -1
+        return 1
 
     # install clean up
     signal.signal(signal.SIGINT, build_cleanup)
 
-    cache = TranscriptCache(opt)
+    q = WorkQueue(opt, opt['threads'])
+    q.start()
 
-    # XXX this is a hack
-    # TODO clean up with a proper api to select and deselect different actions
-    if opt['alignment-only'] :
-        cache.download_complete = True
-        cache.join()
-        cache.build_exonerate_index()
-        print "Info: done!"
-    else :
-        cache.build()
+    t = Transcriptome(opt, q)
+
+    if not opt['alignment-only'] :
+        t.build()
+
+    q.stop()
 
     return 0
 
 def fix(opt) :
     if not check_local(opt) :
-        return -1
+        return 1
 
-    cache = TranscriptCache(opt)
-    cache.fix()
+    t = Transcriptome(opt)
+    return t.fix()
     
-    print "Info: species: %s, release: %d, OK!" % (opt['species'], opt['release']) 
-    return 0
-
 def assemble(opt) :
-    print 'assemble'
+    raise NotImplementedError
 
 def debug(opt) :
     ei = EnsemblInfo(opt)
-    #ei._get_latest_release_versions2()
-    #print ei.get_latest_release2(opt['species'])
-    ei.print_species_table()
+    #ei.print_species_table()
 
     def test(name, rel) :
         print "Is species '%s' valid?" % name,
@@ -124,11 +115,24 @@ def align(opt) :
         return 0
 
     if not check_local(opt, fill_in_release=True) :
-        return -1
+        return 1
+
+    def align_cleanup(signal, frame) :
+        print >> sys.stderr, "\n[!] Forced exit from user..."
+        os._exit(0)
+
+    signal.signal(signal.SIGINT, align_cleanup)
+
+    q = WorkQueue(opt, opt['threads'])
+    q.start()
+
+    t = Transcriptome(opt, q)
+    t.align(opt['contig-file'], opt['contig-outdir'], min_length=opt['contig-minlen'])
+
+    q.stop()
 
     return 0
 
-# TODO list local repositories + status (incomplete, complete)
 def list_ensembl(opt, remote=True, local=True) :
     if remote :
         EnsemblInfo(opt).print_species_table()

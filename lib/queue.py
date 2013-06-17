@@ -1,21 +1,22 @@
 import sys
 import threading
 import Queue
+import time
 
 from multiprocessing import cpu_count
 
 from lib.job import Job, JobError
+from lib.base import Base
 
 
 class WorkQueueError(Exception) :
     pass
 
-class WorkQueue(object):
+class WorkQueue(Base):
     def __init__(self, opt, numworkers, qtimeout=1, maxsize=0):
         super(WorkQueue, self).__init__(opt)
 
-        self.q = Queue.Queue(maxsize) # I think I can deadlock this if maxsize != 0 
-                                      # (because when jobs end, there may be a number of followup jobs)
+        self.q = Queue.Queue(maxsize)
         self.workers = self._init_workers(numworkers)
         self.q_timeout = qtimeout
         self.running = False
@@ -28,13 +29,13 @@ class WorkQueue(object):
         if numworkers == 0 :
             numworkers = self._introspect_cores()
 
-        self.info("WorkQueue: using %d threads" % numworkers)
+        self.info("using %d thread%s" % (numworkers, "" if numworkers == 1 else "s"))
 
         tmp = []
 
         for _ in range(numworkers):
             t = threading.Thread(target=self._consume_queue)
-            t.daemon = True
+            t.setDaemon(True)
             tmp.append(t)
 
         return tmp
@@ -45,32 +46,43 @@ class WorkQueue(object):
         for t in self.workers:
             t.start()
     
-        self.info("WorkQueue: started")
+        self.info("started")
 
+    # block until the currently running jobs complete
     def stop(self):
+        self.info("stopping...")
         self.running = False
-        self.q.join()
         
         for t in self.workers:
             t.join()
     
-        self.info("WorkQueue: stopped")
+        self.info("stopped")
 
-    # this tells the queue that there are no more jobs to be added
-    # (at least externally, it might be the case that they are added
-    #  as follow up jobs, but this will only make the last few jobs
-    #  slightly suboptimal)
+    def join(self) :
+        # calling join causes the calling thread to try and 
+        # acquire the lock in self.q, so poll instead so the
+        # user can still do a ctrl-C
+
+        while True :
+            if self.q.empty() :
+                break
+
+            #self.info("not empty")
+            time.sleep(2)
+
+        self.q.join()
+
+    # block until the queue is drained
     def done(self) :
         self.no_more_jobs = True
-        self.q.join()
 
         for t in self.workers :
             t.join()
 
-        self.info("WorkQueue: done")
+        self.info("done")
 
     def enqueue(self, j):
-        self.info("WorkQueue: enqueuing %s" % key)
+        self.info("enqueuing %s" % str(j))
         
         assert isinstance(j, Job)
 
@@ -78,27 +90,32 @@ class WorkQueue(object):
 
     def _consume_queue(self):
         while self.running :
+            #self.error("running=%s, len=%d" % (str(self.running), self.q.qsize()))
+
             try :
                 work = self.q.get(timeout=self.q_timeout)
             
             except Queue.Empty, qe:
                 if self.no_more_jobs :
+                    self.error("no more jobs")
                     break
 
                 continue
 
-            self.info("WorkQueue: starting %s" % str(work))
+            self.info("starting %s" % str(work))
 
             try :
                 work.run()
             
-                for job in work.followup_jobs() :
-                    self.enqueue(job)
-
             except JobError, je :
                 pass
 
+            self.info("completed %s %s" % (str(work), work.state_str()))
             self.q.task_done()
 
-            self.info("WorkQueue: completed %s (status: %s)" % (str(work), work.status()))
+            if work.terminated() :
+                self.warn("job terminated, thread exiting...")
+                continue # XXX not really sure what this should do...
+                #break
 
+        #self.error("running=%s, len=%d" % (str(self.running), self.q.qsize()))

@@ -1,3 +1,4 @@
+import sys
 import commands
 import re
 
@@ -70,7 +71,7 @@ class EnsemblInfo(object) :
 
         if stat != 0 :
             print >> sys.stderr, "Error: could not run \"%s\"" % showdb
-            sys.exit(-1)
+            sys.exit(1)
 
         dbpat = re.compile("^(.*)_core_(\d+_)?(\d+)_.+")
         db2rel = {}
@@ -196,6 +197,7 @@ class EnsemblDownloader(Base) :
             # ignore genes that have already been seen as members of
             # gene families
             if stableid in self.genes :
+                self.info("skipping %s (already in previous gene family)" % stableid)
                 continue
 
             self.genes.add(stableid)
@@ -213,6 +215,8 @@ class EnsemblDownloader(Base) :
                     paralog_id = paralog.StableId.lower()
                     self.genes.add(paralog_id)
                     gf[paralog_id] = paralog.getLongestCdsTranscript().Cds
+
+            self.info("%s (%d gene%s in family)" % (stableid, len(gf), "s" if len(gf) > 1 else ""))
 
             yield gf
 
