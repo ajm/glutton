@@ -114,15 +114,21 @@ class Transcriptome(Base) :
         
         self.info("complete!")
 
-    # TODO 
-    # currently the exonerate database is just rebuilt, but this might be
-    # a waste of time, this command is really meant for if it was previously
-    # built on a different OS (linux + mac os versions are incompatible)
     def fix(self) :
+        if not self.manifest.is_complete() and not self.force :
+            self.warn("transcriptome for %s:%d is not complete, nothing to fix!" % (self.species, self.release))
+            return 1
+
+        e = ExonerateServer(self.opt, self.dir, self.db_name)
+        if e.test() and not self.force:
+            self.info('exonerate database seems okay, doing nothing...')
+            return 0
+
         self.info("rebuilding exonerate database")
         self._build_exonerate_db()
 
         self.info("complete!")
+        return 0
 
     def align(self, contig_fname, contig_outdir, min_length=200) :
         self._check_dir(contig_outdir, create=True)

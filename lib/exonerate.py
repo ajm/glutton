@@ -34,11 +34,34 @@ class ExonerateServer(Base) :
                 self.info("exonerate-server started...")
                 break
         else :
-            self.error("exonerate-server did not start properly:\n\n%s\n" % '\n'.join(out))
+            if 'Could not open esd file' in output :
+                self.error("exonerate-server did not start properly:" + 
+                           "\n\tcould not read esd file, if it was build on another OS run '%s fix -s '%s' -r %d -d '%s' to rebuild esd file'" % 
+                           (sys.argv[0], self.opt['species'], self.opt['release'], self.opt['database']))
+            else :
+                self.error("exonerate-server did not start properly:\n\n%s\n" % '\n'.join(out))
+
             sys.exit(1)
 
     def started(self) :
         return self.exonerate != None
+
+    def test(self) :
+        test_exonerate = subprocess.Popen(['exonerate-server', self.db_name + '.esi', '--port', str(self.port)],
+                                          cwd=self.dir, stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
+        tmp = False
+
+        for line in iter(test_exonerate.stdout.readline, '') :
+            if 'listening on port' in line :
+                tmp = True
+                break
+
+            if 'Could not open esd file' in line :
+                tmp = False
+                break
+
+        test_exonerate.terminate()
+        return tmp
 
     def start(self) :
         self.info("exonerate-server starting...")
@@ -51,18 +74,17 @@ class ExonerateServer(Base) :
                                     stderr=subprocess.STDOUT,
                                     stdout=subprocess.PIPE)
         
-        self._wait_until_listening()
+        if not self._wait_until_listening() :
+            sys.exit(1)
 
         # change the redirect so the pipes buffer does not fill and stall everything
         self.exonerate.stdout = open('/dev/null', 'w')
 
     def stop(self) :
-        self.info("exonerate-server stopping...")
-
         if self.exonerate :
+            self.info("exonerate-server stopping...")
             self.exonerate.terminate()
-
-        self.info("exonerate-server stopped")
+            self.info("exonerate-server stopped")
 
     def query(self, fname) :
         args = ['exonerate', fname,

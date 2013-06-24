@@ -30,7 +30,8 @@ class LocalInfo(object) :
         n_len = len(sorted(self.caches, key=len, reverse=True)[0]) + 2
         r_len = len("Release") + 2
         c_len = len("Complete") + 2
-
+    
+        print ""
         print "Name".rjust(n_len) + "Release".rjust(r_len) + "Complete".rjust(c_len)
         print "-" * (n_len + r_len + c_len)
 

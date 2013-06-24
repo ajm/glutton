@@ -123,6 +123,7 @@ class EnsemblInfo(object) :
         c_len = self._calc_rjust("Common name", "common_name")
         r_len = self._calc_rjust("Releases", "release_str")
 
+        print ""
         print "Name".rjust(l_len) + "Common Name".rjust(c_len) + "Releases".rjust(r_len)
         print "-" * (l_len + c_len + r_len)
 

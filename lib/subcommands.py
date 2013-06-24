@@ -83,6 +83,9 @@ def build(opt) :
     return 0
 
 def fix(opt) :
+    if opt['list'] :
+        return list_ensembl(opt, remote=False)
+
     if not check_local(opt) :
         return 1
 
