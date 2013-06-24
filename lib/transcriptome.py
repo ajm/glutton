@@ -119,12 +119,7 @@ class Transcriptome(Base) :
             self.warn("transcriptome for %s:%d is not complete, nothing to fix!" % (self.species, self.release))
             return 1
 
-        e = ExonerateServer(self.opt, self.dir, self.db_name)
-        if e.test() and not self.force:
-            self.info('exonerate database seems okay, doing nothing...')
-            return 0
-
-        self.info("rebuilding exonerate database")
+        self.info('rebuilding exonerate database...')
         self._build_exonerate_db()
 
         self.info("complete!")

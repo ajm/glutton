@@ -21,9 +21,6 @@ class ExonerateServer(Base) :
         if not os.path.isfile(os.path.join(self.dir, self.db_name + '.esi')) :
             raise ExonerateError("database called '%s' not found in dir '%s'" % (self.db_name, self.dir))
 
-    def __del__(self) :
-        self.stop()
-
     def _wait_until_listening(self) :
         out = []
         
@@ -31,40 +28,18 @@ class ExonerateServer(Base) :
             out.append(line)
 
             if 'listening on port' in line :
-                self.info("exonerate-server started...")
+                self.info("started...")
                 break
-        else :
-            if 'Could not open esd file' in output :
-                self.error("exonerate-server did not start properly:" + 
-                           "\n\tcould not read esd file, if it was build on another OS run '%s fix -s '%s' -r %d -d '%s' to rebuild esd file'" % 
-                           (sys.argv[0], self.opt['species'], self.opt['release'], self.opt['database']))
-            else :
-                self.error("exonerate-server did not start properly:\n\n%s\n" % '\n'.join(out))
 
+        else :
+            self.error("did not start properly:\n\n%s\n" % '\n'.join(out))
             sys.exit(1)
 
     def started(self) :
         return self.exonerate != None
 
-    def test(self) :
-        test_exonerate = subprocess.Popen(['exonerate-server', self.db_name + '.esi', '--port', str(self.port)],
-                                          cwd=self.dir, stderr=subprocess.STDOUT, stdout=subprocess.PIPE)
-        tmp = False
-
-        for line in iter(test_exonerate.stdout.readline, '') :
-            if 'listening on port' in line :
-                tmp = True
-                break
-
-            if 'Could not open esd file' in line :
-                tmp = False
-                break
-
-        test_exonerate.terminate()
-        return tmp
-
     def start(self) :
-        self.info("exonerate-server starting...")
+        self.info("starting...")
 
         args = ['exonerate-server', self.db_name + '.esi',
                 '--port', str(self.port)]
@@ -74,17 +49,16 @@ class ExonerateServer(Base) :
                                     stderr=subprocess.STDOUT,
                                     stdout=subprocess.PIPE)
         
-        if not self._wait_until_listening() :
-            sys.exit(1)
+        self._wait_until_listening()
 
         # change the redirect so the pipes buffer does not fill and stall everything
         self.exonerate.stdout = open('/dev/null', 'w')
 
     def stop(self) :
         if self.exonerate :
-            self.info("exonerate-server stopping...")
+            self.info("stopping...")
             self.exonerate.terminate()
-            self.info("exonerate-server stopped")
+            self.info("stopped")
 
     def query(self, fname) :
         args = ['exonerate', fname,
@@ -97,8 +71,9 @@ class ExonerateServer(Base) :
             output = subprocess.check_output(args, stderr=open('/dev/null', 'w'))
 
         except subprocess.CalledProcessError, cpe :
-            self.error("exonerate did not run properly, returncode = %d\n\n%s" % (cpe.returncode, cpe.output))
-            sys.exit(1)
+            #self.error("exonerate did not run properly, returncode = %d\n\n%s" % (cpe.returncode, cpe.output))
+            #sys.exit(1)
+            raise ExonerateError("abnormal termination : returncode = %d" % cpe.returncode)
 
         for line in output.split('\n') :
             if line.startswith('vulgar') :
