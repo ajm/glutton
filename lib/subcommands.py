@@ -86,7 +86,7 @@ def fix(opt) :
     if not check_local(opt) :
         return 1
 
-    t = Transcriptome(opt)
+    t = Transcriptome(opt, None, skip_checks=True)
     return t.fix()
     
 def assemble(opt) :
@@ -126,7 +126,7 @@ def align(opt) :
     q = WorkQueue(opt, opt['threads'])
     q.start()
 
-    t = Transcriptome(opt, q)
+    t = Transcriptome(opt, q, skip_checks=True)
     t.align(opt['contig-file'], opt['contig-outdir'], min_length=opt['contig-minlen'])
 
     q.stop()

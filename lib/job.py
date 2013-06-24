@@ -6,20 +6,21 @@ from lib.prank import Prank
 from lib.pagan import Pagan
 
 from abc import abstractmethod
-
+from os.path import basename, isfile, join
 
 class JobError(Exception) :
     pass
 
 class Job(Base) :
-    QUEUED,RUNNING,SUCCESS,FAIL,TERMINATED = range(5)
+    QUEUED,RUNNING,SUCCESS,FAIL,TERMINATED,INTERNAL_ERROR = range(6)
 
     states = {
         QUEUED     : 'QUEUED',
         RUNNING    : 'RUNNING',
         SUCCESS    : 'SUCCESS',
         FAIL       : 'FAIL',
-        TERMINATED : 'TERMINATED'
+        TERMINATED : 'TERMINATED',
+        INTERNAL_ERROR : 'INTERNAL_ERROR'
     }
 
     def __init__(self, opt) :
@@ -28,7 +29,7 @@ class Job(Base) :
         self.state = Job.QUEUED
 
     def success(self) :
-        if self.state not in (Job.SUCCESS, Job.FAIL, Job.TERMINATED) :
+        if self.state not in (Job.SUCCESS, Job.FAIL, Job.TERMINATED, Job.INTERNAL_ERROR) :
             raise JobError('job has not been run')
 
         return self.state == Job.SUCCESS
@@ -43,13 +44,19 @@ class Job(Base) :
         self.state = Job.RUNNING
 
     def end(self, s) :
-        assert s in (Job.SUCCESS, Job.FAIL, Job.TERMINATED), "status should be success, fail or terminated"
+        assert s in (Job.SUCCESS, Job.FAIL, Job.TERMINATED, Job.INTERNAL_ERROR), "status should be success, fail or terminated"
         self.state = s
 
     def run(self) :
         self.start()
         
-        ret = self._run()
+        try :
+            ret = self._run()
+    
+        except Exception, e :
+            self.error(str(e))
+            self.end(Job.INTERNAL_ERROR)
+            return
 
         if ret == 0 :
             self.end(Job.SUCCESS)
@@ -104,6 +111,8 @@ class PaganJob(Job) :
         a_fname = root_fname
         t_fname = None
 
+        self.info("aligning contig in '%s' against gene family in '%s'..." % (basename(self.fname), basename(root_fname)))
+
         if num_genes > 1 :
             a_fname = root_fname + '.pep.2.fas'
             t_fname = root_fname + '.2.dnd'
@@ -114,5 +123,12 @@ class PaganJob(Job) :
                   query_file=self.fname,
                   out_dir=self.outdir)
 
-        return p.run()
+        ret = p.run()
+
+
+        # XXX this is not very neat
+        if not isfile(join(self.outdir, basename(self.fname) + '.fas')) :
+            self._safe_write(join(self.outdir, 'failures.txt'), basename(self.fname))
+
+        return ret
 

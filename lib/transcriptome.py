@@ -15,10 +15,9 @@ from lib.query import QueryManager
 
 class Transcriptome(Base) :
     file_prefix = 'paralog_'
-    done_filename = 'done'
     db_name = 'db'
 
-    def __init__(self, opt, queue) :
+    def __init__(self, opt, queue, skip_checks=False) :
         super(Transcriptome, self).__init__(opt)
 
         self.q = queue
@@ -33,11 +32,24 @@ class Transcriptome(Base) :
         self.exonerate = None
         self.gene2file = None
 
+        self._init_manifest(skip_checks)
+
+    def _init_manifest(self, skip_validation) :
         try :
-            self.manifest = Manifest(opt, self.dir, self.file_prefix, self.db_name, skip_checks=True)
-            
+            self.manifest = Manifest(self.opt, self.dir, self.file_prefix, self.db_name, skip_checks=skip_validation)
+
         except ManifestError, me :
             self.error(str(me))
+            sys.exit(1)
+
+        if skip_validation and not self.manifest.is_complete() :
+            if self.force :
+                return
+
+            self.error("halting operation due to incomplete transcriptome database" + 
+                       "\n\t- use --force to continue anyway or ..." + 
+                       "\n\t- finish building the transcriptome with \"%s build -s '%s' -r %d -d '%s'\"" % \
+                               (sys.argv[0], self.species, self.release, self.opt['database']))
             sys.exit(1)
 
         for fname in self.manifest.get_realignments() :
@@ -48,17 +60,13 @@ class Transcriptome(Base) :
                             fname
                             )
                         )
-        
+
         # the build may seem complete, but there are alignments missing
-        if self._build_complete() :
+        if self.manifest.is_complete() :
             if self.manifest.realignments_required() :
                 self.warn("download appears to be complete, but realignments were required, " + \
                           "waiting for these to finish before proceeding...")
                 self.q.join()
-
-    def __del__(self) :
-        if self.exonerate :
-            self.exonerate.stop()
 
     def is_cancelled(self) :
         return self.cancel
@@ -67,18 +75,15 @@ class Transcriptome(Base) :
         self.info("stopping...")
         self.cancel = True
 
-    def _build_complete(self) :
-        return os.path.exists(os.path.join(self.dir, self.done_filename))
-
     def _build_exonerate_db(self) :
         exonerate = ExonerateDBBuilder(self.opt, self.dir, self.db_name)
         exonerate.build(self)
 
-        for filename in [self.db_name + '.' + ext for ext in ['fa', 'esd', 'esi']] :
+        for filename in exonerate.filenames() : 
             self.manifest.append_to_manifest(filename, None, create=False)
 
     def build(self) :
-        if self._build_complete() and not self.force :
+        if self.manifest.is_complete() and not self.force :
             return
 
         ensembl = EnsemblDownloader(self.opt)
@@ -105,26 +110,27 @@ class Transcriptome(Base) :
             return
 
         self._build_exonerate_db()
+        self.manifest.complete()
+        
+        self.info("complete!")
 
-        # download + alignments are complete, so write 'done' file
-        self.manifest.append_to_manifest(self.done_filename, '', create=True)
-        self.info("download complete!")
-
-    # TODO check if db was build on present OS
-    #      if not rebuild 
+    # TODO 
+    # currently the exonerate database is just rebuilt, but this might be
+    # a waste of time, this command is really meant for if it was previously
+    # built on a different OS (linux + mac os versions are incompatible)
     def fix(self) :
-        raise NotImplementedError
+        self.info("rebuilding exonerate database")
+        self._build_exonerate_db()
+
+        self.info("complete!")
 
     def align(self, contig_fname, contig_outdir, min_length=200) :
         self._check_dir(contig_outdir, create=True)
         
-        if not self.exonerate :
-            self.exonerate = ExonerateServer(self.opt, self.dir, self.db_name)
+        self.exonerate = ExonerateServer(self.opt, self.dir, self.db_name)
+        self.exonerate.start()
 
-        if not self.exonerate.started() :
-            self.exonerate.start()
-
-        qm = QueryManager(self.opt, contig_fname, min_length)
+        qm = QueryManager(self.opt, contig_fname, contig_outdir, min_length)
 
         count = 0
         for fname in qm :
@@ -138,15 +144,13 @@ class Transcriptome(Base) :
                     )
 
             count += 1
-            if count == 10 :
-                break
-
-            if self.cancel : # this does nothing because all this part does is load the q
+            if count == 100 :
                 break
 
         self.q.join()
         self.exonerate.stop()
-        self.info("alignments complete")
+
+        self.info("complete!")
 
     def query(self, query_fname) :
         return self._gene_to_file(self.exonerate.query(query_fname))

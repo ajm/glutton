@@ -45,7 +45,7 @@ class LocalInfo(object) :
         if species not in self.caches :
             return False
 
-        for rel, done in caches[species] :
+        for rel, done in self.caches[species] :
             if rel == release :
                 return True
 

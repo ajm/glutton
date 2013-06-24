@@ -21,6 +21,9 @@ class ExonerateServer(Base) :
         if not os.path.isfile(os.path.join(self.dir, self.db_name + '.esi')) :
             raise ExonerateError("database called '%s' not found in dir '%s'" % (self.db_name, self.dir))
 
+    def __del__(self) :
+        self.stop()
+
     def _wait_until_listening(self) :
         out = []
         
@@ -110,7 +113,6 @@ class Fasta2esd(ToolBase) :
 
     def run(self) :
         returncode, output = self._execute([self.fasta_file, self.db_file], [self.db_file])
-        self.info(output)
         return returncode
 
 class Esd2esi(ToolBase) :
@@ -121,7 +123,6 @@ class Esd2esi(ToolBase) :
 
     def run(self) :
         returncode, output = self._execute([self.db_file, self.index_file], [self.index_file])
-        self.info(output)
         return returncode
 
 class ExonerateDBBuilder(Base) :
@@ -129,6 +130,9 @@ class ExonerateDBBuilder(Base) :
         super(ExonerateDBBuilder, self).__init__(opt)
         self.dir = dir
         self.db_name = db_name
+
+    def filenames(self) :
+        return [self.db_name + '.' + ext for ext in ['fa','esi','esd']]
 
     def build(self, iterable) :
         fasta_file = os.path.join(self.dir, self.db_name + '.fa')
@@ -156,7 +160,6 @@ class ExonerateDBBuilder(Base) :
         genes = set()
 
         for gf in iterable :
-            #print >> f, str(i)
             for k,v in gf.iteritems() :
                 if k not in genes :
                     print >> f, ">%s\n%s" % (k,v)

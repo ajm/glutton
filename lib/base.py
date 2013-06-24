@@ -6,6 +6,7 @@ import tempfile
 
 class Base(object) :
     print_lock = threading.Lock()
+    safe_write_lock = threading.Lock()
 
     def __init__(self, opt) :
         self.opt = opt
@@ -63,6 +64,25 @@ class Base(object) :
         f.write(fcontents)
         f.close()
         self.info("created %s" % os.path.basename(fname))
+
+    # XXX this is to be used exceptionally sparingly
+    def _safe_write(self, fname, line) :
+        assert os.path.isabs(fname)
+
+        self.info("writing '%s' to %s ..." % (line, os.path.basename(fname)))
+
+        self.safe_write_lock.acquire()
+
+        try :
+            f = open(fname, 'a')
+            print >> f, line
+            os.fsync(f)
+            f.close()
+
+        except IOError, ioe :
+            self.warn(str(ioe))
+        finally :
+            self.safe_write_lock.release()
 
     def _contents(self, fname) :
         return open(fname).read()

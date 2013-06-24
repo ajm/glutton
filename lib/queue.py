@@ -67,8 +67,7 @@ class WorkQueue(Base):
             if self.q.empty() :
                 break
 
-            #self.info("not empty")
-            time.sleep(2)
+            time.sleep(10)
 
         self.q.join()
 
@@ -90,32 +89,23 @@ class WorkQueue(Base):
 
     def _consume_queue(self):
         while self.running :
-            #self.error("running=%s, len=%d" % (str(self.running), self.q.qsize()))
-
             try :
                 work = self.q.get(timeout=self.q_timeout)
             
             except Queue.Empty, qe:
                 if self.no_more_jobs :
-                    self.error("no more jobs")
+                    self.info("no more jobs, exiting...")
                     break
 
                 continue
 
             self.info("starting %s" % str(work))
-
-            try :
-                work.run()
-            
-            except JobError, je :
-                pass
+            work.run()
 
             self.info("completed %s %s" % (str(work), work.state_str()))
             self.q.task_done()
 
             if work.terminated() :
                 self.warn("job terminated, thread exiting...")
-                continue # XXX not really sure what this should do...
-                #break
+                break
 
-        #self.error("running=%s, len=%d" % (str(self.running), self.q.qsize()))

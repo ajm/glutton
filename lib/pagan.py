@@ -27,7 +27,7 @@ class Pagan(ToolBase) :
                       "--queryfile",    self.query_file,
                       "--outfile",      self.out_file,
                       "--fast-placement",
-                      "--test-every-node",
+                      "--test-every-terminal-node",
                       "--translate", 
                       "--find-best-orf"
                      ]

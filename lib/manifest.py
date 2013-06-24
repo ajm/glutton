@@ -5,7 +5,7 @@ import string
 import hashlib
 import threading
 
-from os.path import join
+from os.path import join, exists
 from glob import glob
 
 from cogent.parse.fasta import MinimalFastaParser
@@ -17,13 +17,14 @@ class ManifestError(Exception) :
     pass
 
 class Manifest(Base) :
-    manifest_name = 'manifest'
+    manifest_filename = 'manifest'
+    done_filename = 'done'
 
     def __init__(self, opt, dir, prefix, db_name, skip_checks=False) :
         super(Manifest, self).__init__(opt)
 
         self.dir = dir
-        self.name = join(self.dir, self.manifest_name)
+        self.name = join(self.dir, self.manifest_filename)
         self.db_name = db_name
 
         self.manifest_pat = re.compile("^(.+) ([%s]{32})$" % (string.ascii_lowercase + string.digits)) # filename + md5
@@ -49,6 +50,14 @@ class Manifest(Base) :
 
         except IOError, ioe :
             raise ManifestError("could not create manifest file in %s: %s" % (self.dir, ioe.strerror))
+
+    # would be nice to set a flag, but then the checks can be skipped
+    # and then something else would have to be done
+    def is_complete(self) :
+        return exists(join(self.dir, self.done_filename))
+
+    def complete(self) :
+        self.append_to_manifest(self.done_filename, '', create=True)
 
     def get_genes(self) :
         return self.genes
@@ -206,7 +215,7 @@ class Manifest(Base) :
         for fname in glob(join(self.dir, '*')) :
             basename = os.path.basename(fname)
 
-            if basename == self.manifest_name :
+            if basename == self.manifest_filename :
                 continue
 
             if basename == 'done' :
