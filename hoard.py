@@ -35,7 +35,9 @@ commands = {
             'assemble'  : lib.subcommands.assemble,
             'align'     : lib.subcommands.align,
             'debug'     : lib.subcommands.debug,
-            'list'      : lib.subcommands.list_ensembl
+            'list'      : lib.subcommands.list_ensembl,
+            'pack'      : lib.subcommands.pack,
+            'unpack'    : lib.subcommands.unpack
            }
 
 required_programs = {
@@ -44,7 +46,9 @@ required_programs = {
             'assemble'  : ['sga'],
             'align'     : ['pagan','exonerate-server','exonerate'],
             'debug'     : [],
-            'list'      : []
+            'list'      : [],
+            'pack'      : [],
+            'unpack'    : []
            }
 
 def get_default_options() :
@@ -53,7 +57,7 @@ def get_default_options() :
             'species'       : None,
             'release'       : None,
             'list'          : None,
-            'workingdir'    : os.path.join(os.getcwd(), 'cache'),
+            'workingdir'    : os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache'),
             'tmpdir'        : os.environ.get('TMPDIR', '/tmp'),
             'restart'       : False,
             'verbose'       : False,
@@ -188,6 +192,14 @@ Legal commands are %s (see below for options).
             --specify-db='db info'  ('db info' is comma separated host, port, username, password)
 
 %s options:
+    -l      --list
+    -s      --species='species'
+    -r      --release='release'
+
+%s options:
+    -i      --input='file'
+
+%s options:
     -l      --list                  (list downloaded species and release versions)
     -s      --species='species'     (no default, use --list for options locally available, MANDATORY)
     -r      --release='release'     (default = latest available locally)
@@ -201,7 +213,7 @@ Legal commands are %s (see below for options).
             --sga='location'        (default = None, use system-wide version)
             --pagan='location'      (default = None, use system-wide version)
 
-    -w      --workingdir='dir'      (default = %s)
+    -b      --dbdir='dir'           (default = %s)
     -t      --tmpdir='dir'          (default = %s)
     -c      --threads=NUM           (default = %s)
 
@@ -216,6 +228,8 @@ Legal commands are %s (see below for options).
         bold('build'),
         pretty([options['database']]),
         pretty(databases.keys()),
+        bold('pack'),
+        bold('unpack'),
         bold('align'),
         options['contig-minlen'],
         bold('misc'),
@@ -240,12 +254,12 @@ def parse_args(argv) :
     try :
         opts,args = getopt.getopt(
                         argv,
-                        "s:ld:r:a:w:t:c:vhfm:i:o:",
+                        "s:ld:r:a:b:t:c:vhfm:i:o:",
                         [   
                             "species=", 
                             "species2=",
                             "release=",
-                            "workingdir=",
+                            "dbdir=",
                             "tmpdir=",
                             "list",
                             "verbose", 
@@ -284,7 +298,7 @@ def parse_args(argv) :
         elif o in ('-s', '--species') :
             options['species'] = a
 
-        elif o in ('-w', '--workingdir') :
+        elif o in ('-b', '--dbdir') :
             options['workingdir'] = os.path.abspath(a)
 
         elif o in ('-t', '--tmpdir') :

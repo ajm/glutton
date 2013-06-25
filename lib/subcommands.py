@@ -1,6 +1,7 @@
 import sys
 import signal
 import os
+import subprocess
 
 from lib.ensembl import EnsemblInfo
 from lib.local import LocalInfo
@@ -144,4 +145,35 @@ def list_ensembl(opt, remote=True, local=True) :
         LocalInfo(opt).print_species_table()
 
     return 0
+
+def pack(opt) :
+    if opt['list'] :
+        list_ensembl(opt, remote=False)
+        return 0
+
+    if not check_local(opt) :
+        return 1
+
+    t = Transcriptome(opt, None, skip_checks=True)
+    return t.package()
+
+def unpack(opt) :
+    name,ext = os.path.splitext(os.path.basename(opt['contig-file']))
+    
+    if ext != '.tgz' :
+        print >> sys.stderr, "Error: do not know how to deal with '%s' files" % ext
+        return 1
+    
+    try :
+        species,release = name.split('_')
+        release = int(release)
+    except :
+        print >> sys.sterr, "Error: package files must be called 'species_release.tgz'"
+        return 1
+
+    opt['species'] = species
+    opt['release'] = release
+
+    t = Transcriptome(opt, None)
+    return t.unpackage(opt['contig-file'])
 

@@ -1,8 +1,9 @@
 import sys
 import tempfile
 import os
+import subprocess
 
-from os.path import join
+from os.path import join, basename
 from glob import glob
 
 from lib.base import Base
@@ -184,7 +185,7 @@ class Transcriptome(Base) :
             yield GeneFamily(i)
 
     def _genefamilies_files(self) :
-        for i in glob(os.path.join(self.dir, self.file_prefix + '*')) :
+        for i in glob(join(self.dir, self.file_prefix + '*')) :
             if len(os.path.basename(i)) == (len(self.file_prefix) + 6) : 
                 yield i
     
@@ -193,4 +194,49 @@ class Transcriptome(Base) :
 
     def __str__(self) :
         return "%s: %s-%d" % (type(self).__name__, self.species, self.release)
+
+    def package(self) :
+        outfile_name = join(os.getcwd(), "%s_%d.tgz" % (self.species, self.release))
+
+        if os.path.isfile(outfile_name) :
+            self.error("file %s already exists..." % outfile_name)
+            return 1
+
+        args = ['tar', 'zcf',
+                outfile_name,
+                join(str(self.release), self.species)]
+
+        self.info("packing %s ..." % outfile_name)
+
+        try :
+            subprocess.check_output(args, 
+                                    cwd=self.workingdir, 
+                                    stderr=open('/dev/null', 'w'))
+
+        except subprocess.CalledProcessError, cpe :
+            self.error(str(cpe))
+            return 1
+
+        self.info("complete!")
+
+        return 0
+        
+    def unpackage(self, package_name) :
+        args = ['tar', 'xf',
+                package_name]
+
+        self.info("unpacking %s ..." % basename(package_name))
+
+        try :
+            subprocess.check_output(args, 
+                                    cwd=self.workingdir, 
+                                    stderr=open('/dev/null', 'w'))
+
+        except subprocess.CalledProcessError, cpe :
+            self.error(str(cpe))
+            return 1
+
+        self.info("complete!")
+
+        return 0
 
