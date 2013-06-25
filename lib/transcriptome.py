@@ -154,7 +154,10 @@ class Transcriptome(Base) :
         self.info("complete!")
 
     def query(self, query_fname) :
-        return self._gene_to_file(self.exonerate.query(query_fname))
+        return list(set([ self._gene_to_file(i) for i in self.exonerate.query(query_fname) ]))
+
+        # XXX might be more than one
+        #return self._gene_to_file(self.exonerate.query(query_fname))
 
     def _gene_to_file(self, gene_name) :
         if not self.gene2file :

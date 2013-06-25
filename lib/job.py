@@ -107,27 +107,41 @@ class PaganJob(Job) :
         assert os.path.isabs(self.outdir) and os.path.isdir(self.outdir)
 
     def _run(self) :
-        root_fname, num_genes = self.transcriptome.query(self.fname)
-        a_fname = root_fname
-        t_fname = None
+        ret = 1
 
-        self.info("aligning contig in '%s' against gene family in '%s'..." % (basename(self.fname), basename(root_fname)))
+        for index,job in enumerate(self.transcriptome.query(self.fname)) :
+            root_fname, num_genes = job
+            a_fname = root_fname
+            t_fname = None
 
-        if num_genes > 1 :
-            a_fname = root_fname + '.pep.2.fas'
-            t_fname = root_fname + '.2.dnd'
+            self.info("aligning contig in '%s' against gene family in '%s'..." % (basename(self.fname), basename(root_fname)))
 
-        p = Pagan(self.opt,
+            if num_genes > 1 :
+                a_fname = root_fname + '.pep.2.fas'
+                t_fname = root_fname + '.2.dnd'
+
+            p = Pagan(self.opt,
                   alignment_file=a_fname, 
                   tree_file=t_fname, 
                   query_file=self.fname,
                   out_dir=self.outdir)
 
-        ret = p.run()
+            p.run()
 
+            tmp = join(self.outdir, basename(self.fname))
+            fas = tmp + '.fas'
+            dna = tmp + '.dna.fas'
 
-        # XXX this is not very neat
-        if not isfile(join(self.outdir, basename(self.fname) + '.fas')) :
+            if isfile(fas) and isfile(dna) :
+                ret = 0
+                os.rename(fas, "%s.%d.fas" % (tmp, index))
+                os.rename(dna, "%s.%d.dna.fas" % (tmp, index))
+
+                self.info("align '%s' --> '%s' success" % (basename(self.fname), basename(root_fname)))
+            else :
+                self.info("align '%s' --> '%s' fail" % (basename(self.fname), basename(root_fname)))
+
+        if ret != 0 :
             self._safe_write(join(self.outdir, 'failures.txt'), basename(self.fname))
 
         return ret

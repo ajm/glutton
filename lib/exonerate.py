@@ -60,10 +60,16 @@ class ExonerateServer(Base) :
             self.exonerate.terminate()
             self.info("stopped")
 
+    # XXX
+    # query only returns a single gene name that it aligned to
+    # but there could be multiple hits, what to do?
+    #   - just return one?
+    #   - return all hits with the same raw score, have pagan align all? (making a check they do not all come from the same file)
+    #   - raise exception? error?
     def query(self, fname) :
         args = ['exonerate', fname,
                 'localhost:' + str(self.port),
-                '--bestn', '1',
+                '--bestn', '10',
                 '--model', 'affine:local',
                 '--showalignment', 'no']
 
@@ -73,17 +79,34 @@ class ExonerateServer(Base) :
         except subprocess.CalledProcessError, cpe :
             #self.error("exonerate did not run properly, returncode = %d\n\n%s" % (cpe.returncode, cpe.output))
             #sys.exit(1)
-            raise ExonerateError("abnormal termination : returncode = %d" % cpe.returncode)
+            raise ExonerateError("exonerate abnormal termination : returncode = %d" % cpe.returncode)
 
+        hits = []
+        high_score = -1
+
+        # field 5 is gene name
+        # field 9 is the 'raw score'
         for line in output.split('\n') :
             if line.startswith('vulgar') :
                 fields = line.strip().split()
-                return fields[5]
+                #return fields[5]
+
+                gene_name = fields[5]
+                raw_score = int(fields[9])                
+
+                if high_score == -1 :
+                    high_score = raw_score
+
+                if high_score == raw_score :
+                    hits.append(gene_name)
 
             # vulgar: aael001690 581 737 + >agap005310 596 752 + 339 M 156 156
             # vulgar: aael009244 667 744 + >agap006707 604 681 + 178 M 77 77
 
-        raise ExonerateError("no alignment")
+        if len(hits) == 0 :
+            raise ExonerateError("no alignment")
+
+        return hits
 
 class Fastareformat(ToolBase) :
     def __init__(self, opt, fasta_file) :
