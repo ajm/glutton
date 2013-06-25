@@ -4,6 +4,7 @@ from lib.base import Base
 from lib.manifest import Manifest, ManifestError
 from lib.prank import Prank
 from lib.pagan import Pagan
+from lib.exonerate import ExonerateError
 
 from abc import abstractmethod
 from os.path import basename, isfile, join
