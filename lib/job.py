@@ -109,7 +109,15 @@ class PaganJob(Job) :
     def _run(self) :
         ret = 1
 
-        for index,job in enumerate(self.transcriptome.query(self.fname)) :
+        try :
+            job_list = self.transcriptome.query(self.fname)
+
+        except ExonerateError, ee :
+            self.info("%s : %s" % (basename(self.fname), str(ee)))
+            return 1
+
+
+        for index,job in enumerate(job_list) :
             root_fname, num_genes = job
             a_fname = root_fname
             t_fname = None

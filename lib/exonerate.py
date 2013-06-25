@@ -60,17 +60,11 @@ class ExonerateServer(Base) :
             self.exonerate.terminate()
             self.info("stopped")
 
-    # XXX
-    # query only returns a single gene name that it aligned to
-    # but there could be multiple hits, what to do?
-    #   - just return one?
-    #   - return all hits with the same raw score, have pagan align all? (making a check they do not all come from the same file)
-    #   - raise exception? error?
     def query(self, fname) :
         args = ['exonerate', fname,
                 'localhost:' + str(self.port),
                 '--bestn', '10',
-                '--model', 'affine:local',
+                #'--model', 'affine:local', # SEGFAULT on linux
                 '--showalignment', 'no']
 
         try :

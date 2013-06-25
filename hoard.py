@@ -8,7 +8,7 @@ try :
     import cogent
 
 except ImportError :
-    print >> sys.stderr, "Error: pycogent is not installed! (tested with version 1.5.3)"
+    print >> sys.stderr, "Error: pycogent is not installed! (tested with version 1.5.3)\n"
     sys.exit(1)
 
 import os

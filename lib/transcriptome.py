@@ -133,7 +133,6 @@ class Transcriptome(Base) :
 
         qm = QueryManager(self.opt, contig_fname, contig_outdir, min_length)
 
-        count = 0
         for fname in qm :
             self.q.enqueue(
                     PaganJob(
@@ -143,10 +142,6 @@ class Transcriptome(Base) :
                         contig_outdir
                         )
                     )
-
-            count += 1
-            if count == 100 :
-                break
 
         self.q.join()
         self.exonerate.stop()
