@@ -1,4 +1,16 @@
 import sys
+
+if (sys.version_info.major != 2) and (sys.version_info.minor < 7) :
+    print >> sys.stderr, "Sorry: requires python version 2.7 or greater (but not python 3.x)\n"
+    sys.exit(1)
+
+try :
+    import cogent
+
+except ImportError :
+    print >> sys.stderr, "Error: pycogent is not installed! (tested with version 1.5.3)"
+    sys.exit(1)
+
 import os
 import getopt
 
