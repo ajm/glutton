@@ -1,6 +1,6 @@
 import sys
 
-if (sys.version_info.major != 2) and (sys.version_info.minor < 7) :
+if sys.version_info < (2,7) :
     print >> sys.stderr, "Sorry: requires python version 2.7 or greater (but not python 3.x)\n"
     sys.exit(1)
 
