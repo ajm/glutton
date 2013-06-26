@@ -2,7 +2,7 @@ import os
 
 class LocalInfo(object) :
     def __init__(self, options) :
-        self.workingdir = options['workingdir']
+        self.dbdir = options['dbdir']
         self.verbose = options['verbose']
 
         self.caches = self._get_caches()
@@ -10,14 +10,14 @@ class LocalInfo(object) :
     def _get_caches(self) :
         tmp = {}
 
-        for releasedir in os.listdir(self.workingdir) :
+        for releasedir in os.listdir(self.dbdir) :
             try :
                 release = int(releasedir)
             except ValueError :
                 continue
 
-            for speciesdir in os.listdir(os.path.join(self.workingdir, releasedir)) :
-                done = os.path.exists(os.path.join(self.workingdir, releasedir, speciesdir, 'done'))
+            for speciesdir in os.listdir(os.path.join(self.dbdir, releasedir)) :
+                done = os.path.exists(os.path.join(self.dbdir, releasedir, speciesdir, 'done'))
 
                 if speciesdir not in tmp :
                     tmp[speciesdir] = []
@@ -31,6 +31,10 @@ class LocalInfo(object) :
         r_len = len("Release") + 2
         c_len = len("Complete") + 2
     
+        n_len = 31
+        r_len = 20
+        c_len = 10
+
         print ""
         print "Name".rjust(n_len) + "Release".rjust(r_len) + "Complete".rjust(c_len)
         print "-" * (n_len + r_len + c_len)

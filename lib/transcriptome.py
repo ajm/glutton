@@ -14,11 +14,12 @@ from lib.exonerate import ExonerateDBBuilder, ExonerateServer
 from lib.genefamily import GeneFamily
 from lib.query import QueryManager
 
+
 class Transcriptome(Base) :
     file_prefix = 'paralog_'
     db_name = 'db'
 
-    def __init__(self, opt, queue, skip_checks=False) :
+    def __init__(self, opt, queue=None, skip_checks=False) :
         super(Transcriptome, self).__init__(opt)
 
         self.q = queue
@@ -49,8 +50,8 @@ class Transcriptome(Base) :
 
             self.error("halting operation due to incomplete transcriptome database" + 
                        "\n\t- use --force to continue anyway or ..." + 
-                       "\n\t- finish building the transcriptome with \"%s build -s '%s' -r %d -d '%s'\"" % \
-                               (sys.argv[0], self.species, self.release, self.opt['database']))
+                       "\n\t- finish building the transcriptome with \"%s build -s '%s' -r %d\"" % \
+                               (sys.argv[0], self.species, self.release))
             sys.exit(1)
 
         for fname in self.manifest.get_realignments() :
@@ -90,6 +91,7 @@ class Transcriptome(Base) :
         ensembl = EnsemblDownloader(self.opt)
         ensembl.set_already_downloaded(self.manifest.get_genes())
 
+        count = 0
         for gene_family in ensembl :
             fname = self._random_filename(self.file_prefix, self.dir)
             self.manifest.append_to_manifest(fname, str(gene_family), create=True)
@@ -106,7 +108,15 @@ class Transcriptome(Base) :
                             )
                         )
 
+            # XXX DEBUG CODE
+            count += 1
+            if count == 5 :
+                break
+
+        self.info('waiting for queue to drain...')
         self.q.join()
+        self.info('queue drained')
+
         if self.cancel :
             return
 
@@ -175,7 +185,7 @@ class Transcriptome(Base) :
         return g2f,f2g
 
     def _get_dir(self) :
-        dirname = join(self.workingdir, str(self.release), self.species)
+        dirname = join(self.dbdir, str(self.release), self.species)
         self._check_dir(self.tmpdir, create=True)
         self._check_dir(dirname, create=True)
         return dirname
@@ -196,21 +206,22 @@ class Transcriptome(Base) :
         return "%s: %s-%d" % (type(self).__name__, self.species, self.release)
 
     def package(self) :
-        outfile_name = join(os.getcwd(), "%s_%d.tgz" % (self.species, self.release))
+        outfile_name = "%s_%d.tgz" % (self.species, self.release)
+        outfile_path = join(os.getcwd(), outfile_name)
 
-        if os.path.isfile(outfile_name) :
+        if os.path.isfile(outfile_path) :
             self.error("file %s already exists..." % outfile_name)
             return 1
 
         args = ['tar', 'zcf',
-                outfile_name,
+                outfile_path,
                 join(str(self.release), self.species)]
 
         self.info("packing %s ..." % outfile_name)
 
         try :
             subprocess.check_output(args, 
-                                    cwd=self.workingdir, 
+                                    cwd=self.dbdir, 
                                     stderr=open('/dev/null', 'w'))
 
         except subprocess.CalledProcessError, cpe :
@@ -218,10 +229,13 @@ class Transcriptome(Base) :
             return 1
 
         self.info("complete!")
-
         return 0
         
     def unpackage(self, package_name) :
+        if not self.manifest.is_empty() and not self.force :
+            self.error("database for %s:%d already exists (rerun with --force to overwrite)" % (self.species, self.release))
+            return 1
+
         args = ['tar', 'xf',
                 package_name]
 
@@ -229,7 +243,7 @@ class Transcriptome(Base) :
 
         try :
             subprocess.check_output(args, 
-                                    cwd=self.workingdir, 
+                                    cwd=self.dbdir, 
                                     stderr=open('/dev/null', 'w'))
 
         except subprocess.CalledProcessError, cpe :
@@ -237,6 +251,5 @@ class Transcriptome(Base) :
             return 1
 
         self.info("complete!")
-
         return 0
 

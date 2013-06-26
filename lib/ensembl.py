@@ -198,7 +198,7 @@ class EnsemblDownloader(Base) :
             # ignore genes that have already been seen as members of
             # gene families
             if stableid in self.genes :
-                self.info("skipping %s (already in previous gene family)" % stableid)
+                self.info("skipping %s (already downloaded)" % stableid)
                 continue
 
             self.genes.add(stableid)

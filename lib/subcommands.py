@@ -2,178 +2,231 @@ import sys
 import signal
 import os
 import subprocess
+import shutil
 
+from lib.base import Base
 from lib.ensembl import EnsemblInfo
 from lib.local import LocalInfo
 from lib.transcriptome import Transcriptome
 from lib.queue import WorkQueue
 
 
-def check_local(opt, fill_in_release=False) :
-    return _check_generic(opt, LocalInfo(opt), fill_in_release)
+class Subcommand(Base) :
+    def __init__(self, options, parameters=[], programs=[], local=True, list_option=True) :
+        super(Subcommand, self).__init__(options)
 
-def check_remote(opt, fill_in_release=False) :
-    return _check_generic(opt, EnsemblInfo(opt), fill_in_release)
+        self.parameters = parameters
+        self.programs = programs
+        self.local = local
 
-def _check_generic(opt, info, fill_in_release) :
-    # check species is species and valid
-    if opt['species'] is None :
-        print >> sys.stderr, "Error: you must specify a species!"
+        if list_option and self.opt['list'] :
+            info = LocalInfo(self.opt) if self.local else EnsemblInfo(self.opt)
+            info.print_species_table()
+            sys.exit(0)
+
+        self._check_programs()
+        self._check_parameters()
+        self._check_species()
+
+    def _program_exists(self, programname) :
+        for p in os.environ['PATH'].split(os.pathsep) :
+            progpath = os.path.join(p, programname)
+            if os.path.isfile(progpath) :
+                # there may be another executable with the correct
+                # permissions lower down in the path, but the shell
+                # would not find it, so just return here...
+                return os.access(progpath, os.X_OK)
+
         return False
 
-    if (opt['release'] is None) and (not fill_in_release) :
-        print >> sys.stderr, "Error: you must specify a release!"
-        return False
+    def _check_programs(self) :
+        bad = False
 
-    # check species is valid
-    if not info.is_valid_species(opt['species']) :
-        print >> sys.stderr, "Error: '%s' is an invalid species" % opt['species']
-        return False
+        # ensure required programs are installed locally
+        for prog in self.programs :
+            if not self._program_exists(prog) :
+                self.error("'%s' is not installed." % prog)
+                bad = True
 
-    # get latest version
-    if opt['release'] is None and fill_in_release :
-        opt['release'] = info.get_latest_release(opt['species'])
+        if bad :
+            sys.exit(1)
 
-        if opt['release'] == -1 :
-            print >> sys.stderr, "Error: could not find database for \'%s\'" % opt['species']
-            return False
+    def _check_parameters(self) :
+        bad = False
 
-        print >> sys.stderr, "Info: release not specified, using release %d" % opt['release']
+        for p in self.parameters :
+            if not self.opt[p] :
+                self.error("missing mandatory command line argument '--%s'" % p)
+                bad = True
 
-    else :
-        # check release is valid
-        if not info.is_valid_release(opt['species'], opt['release']) :
-            print >> sys.stderr, "Error: %d is an invalid release for '%s'" % (opt['release'], opt['species'])
-            return False
+        if bad :
+            sys.exit(1)
 
-    return True
+    def _check_species(self) :
+        if 'species' not in self.parameters :
+            return
 
-def build(opt) :
-    t = None
+        info = LocalInfo(self.opt) if self.local else EnsemblInfo(self.opt)
+        species = self.opt['species']
+        release = self.opt['release']
+        fill_in = ('species' in self.parameters) and ('release' not in self.parameters)
 
-    def build_cleanup(signal, frame) :
-        if t :
-            if not t.is_cancelled() :
-                t.stop()
-                print >> sys.stderr, "\n[!] Application will shutdown after the next gene family is downloaded or user types '^C' again...\n"
+        if not info.is_valid_species(species) :
+            self.error("'%s' is an invalid species" % species)
+            sys.exit(1)
+
+        if release is None and fill_in :
+            release = info.get_latest_release(species)
+
+            if release == -1 :
+                self.error("could not find database for \'%s\'" % species)
+                sys.exit(1)
+
+            self.opt['release'] = release
+            self.info("release not specified, using release %d" % release)
+
+        else :
+            if not info.is_valid_release(species, release) :
+                self.error("%d is an invalid release for '%s'" % (release, species))
+                sys.exit(1)
+
+    def run(self) :
+        return self._run()
+
+    def _run(self) :
+        raise NotImplementedError
+
+class BuildCommand(Subcommand) :
+    parameters = ['species','database']
+    programs = ['prank', 'fastareformat', 'fasta2esd', 'esd2esi']
+
+    def __init__(self, opt) :
+        super(BuildCommand, self).__init__(opt, self.parameters, self.programs, local=False)
+
+        self.transcriptome = Transcriptome(opt, WorkQueue(opt, opt['threads']))
+        self._init()
+
+    def _init(self) :
+        def _cleanup(signal, frame) :
+            if not self.transcriptome.is_cancelled() :
+                self.transcriptome.stop()
+                self.warn("Application will shutdown after current download or user types '^C' again...")
                 return
 
-        print >> sys.stderr, "\n[!] Forced exit from user..."
-        os._exit(0)
+            self.warn("Forced exit from user")
+            os._exit(0)
 
-    # list remote targets
-    if opt['list'] :
-        return list_ensembl(opt, local=False)
+        signal.signal(signal.SIGINT, _cleanup)
 
-    if not check_remote(opt, fill_in_release=True) :
-        return 1
-
-    # install clean up
-    signal.signal(signal.SIGINT, build_cleanup)
-
-    q = WorkQueue(opt, opt['threads'])
-    q.start()
-
-    t = Transcriptome(opt, q)
-
-    if not opt['alignment-only'] :
-        t.build()
-
-    q.stop()
-
-    return 0
-
-def fix(opt) :
-    if opt['list'] :
-        return list_ensembl(opt, remote=False)
-
-    if not check_local(opt) :
-        return 1
-
-    t = Transcriptome(opt, None, skip_checks=True)
-    return t.fix()
-    
-def assemble(opt) :
-    raise NotImplementedError
-
-def debug(opt) :
-    ei = EnsemblInfo(opt)
-    #ei.print_species_table()
-
-    def test(name, rel) :
-        print "Is species '%s' valid?" % name,
-        print "Yep" if ei.is_valid_species(name) else "Nope" 
-        print "Is release %d valid?" % rel,
-        print "Yep" if ei.is_valid_release(name, rel) else "Nope"    
-
-    test('pig', 70)
-    test('human', 100)
-    test('Loxodonta africana', 39)
-    test('xxx', 10)   
-
-    return 0
-
-def align(opt) :
-    if opt['list'] :
-        list_ensembl(opt, remote=False)
+    def _run(self) :
+        self.transcriptome.build()
         return 0
 
-    if not check_local(opt, fill_in_release=True) :
-        return 1
+class ListCommand(Subcommand) :
+    def __init__(self, opt) :
+        super(ListCommand, self).__init__(opt)
 
-    def align_cleanup(signal, frame) :
-        print >> sys.stderr, "\n[!] Forced exit from user..."
-        os._exit(0)
-
-    signal.signal(signal.SIGINT, align_cleanup)
-
-    q = WorkQueue(opt, opt['threads'])
-    q.start()
-
-    t = Transcriptome(opt, q, skip_checks=True)
-    t.align(opt['contig-file'], opt['contig-outdir'], min_length=opt['contig-minlen'])
-
-    q.stop()
-
-    return 0
-
-def list_ensembl(opt, remote=True, local=True) :
-    if remote :
-        EnsemblInfo(opt).print_species_table()
-
-    if local :
-        LocalInfo(opt).print_species_table()
-
-    return 0
-
-def pack(opt) :
-    if opt['list'] :
-        list_ensembl(opt, remote=False)
+    def _run(self) :
+        EnsemblInfo(self.opt).print_species_table()
+        LocalInfo(self.opt).print_species_table()
         return 0
 
-    if not check_local(opt) :
-        return 1
+class AssembleCommand(Subcommand) :
+    def __init__(self, opt) :
+        super(AssembleCommand, self).__init__(opt, programs=['sga'], list_option=False)
 
-    t = Transcriptome(opt, None, skip_checks=True)
-    return t.package()
+    def _run(self) :
+        raise NotImplementedError
 
-def unpack(opt) :
-    name,ext = os.path.splitext(os.path.basename(opt['contig-file']))
+class AlignCommand(Subcommand) :
+    parameters = ['species', 'input-file', 'output-dir', 'min-length']
+    programs = ['pagan', 'exonerate-server', 'exonerate']
     
-    if ext != '.tgz' :
-        print >> sys.stderr, "Error: do not know how to deal with '%s' files" % ext
-        return 1
-    
-    try :
-        species,release = name.split('_')
-        release = int(release)
-    except :
-        print >> sys.sterr, "Error: package files must be called 'species_release.tgz'"
-        return 1
+    def __init__(self, opt) :
+        super(AlignCommand, self).__init__(opt, self.parameters, self.programs)
 
-    opt['species'] = species
-    opt['release'] = release
+        self.transcriptome = Transcriptome(opt, WorkQueue(opt, opt['threads']), skip_checks=True)
+        self._init()
 
-    t = Transcriptome(opt, None)
-    return t.unpackage(opt['contig-file'])
+    def _init(self) :
+        def _cleanup(signal, frame) :
+            self.error("Forced exit from user")
+            os._exit(0)
+
+        signal.signal(signal.SIGINT, _cleanup)
+
+    def _run(self) :
+        self.transcriptome.align(
+                            self.opt['input-file'], 
+                            self.opt['output-dir'], 
+                            min_length=self.opt['min-length'])
+        return 0
+
+class FixCommand(Subcommand) :
+    parameters = ['species','release']
+    programs = ['fastareformat', 'fasta2esd', 'esd2esi']
+
+    def __init__(self, opt) :
+        super(FixCommand, self).__init__(opt, self.parameters, self.programs)
+
+        self.transcriptome = Transcriptome(opt, skip_checks=True)
+
+    def _run(self) :
+        self.transcriptome.fix()
+        return 0
+
+class RmCommand(Subcommand) :
+    parameters = ['species', 'release']
+
+    def __init__(self, opt) :
+        super(RmCommand, self).__init__(opt, self.parameters)
+
+    def _run(self) :
+        self.info("deleting %s:%d ..." % (self.opt['species'], self.opt['release']))
+
+        try :
+            shutil.rmtree(os.path.join(self.dbdir, str(self.opt['release']), self.opt['species']))
+        
+        except OSError, ose :
+            self.error(str(ose))
+            self.error('halting')
+            return 1
+
+        self.info('deleted!')
+        return 0
+
+class PackCommand(Subcommand) :
+    def __init__(self, opt) :
+        super(PackCommand, self).__init__(opt, parameters=['species', 'release'])
+
+        self.transcriptome = Transcriptome(opt, skip_checks=True)
+
+    def _run(self) :
+        return self.transcriptome.package()
+
+class UnpackCommand(Subcommand) :
+    def __init__(self, opt) :
+        super(UnpackCommand, self).__init__(opt, parameters=['input-file'], list_option=False)
+        self._init()
+
+    def _init(self) :
+        name,ext = os.path.splitext(os.path.basename(self.opt['input-file']))
+   
+        if ext != '.tgz' :
+            self.error("do not know how to deal with '%s' files" % ext)
+            sys.exit(1)
+   
+        try :
+            species, release = name.split('_')
+            self.opt['species'] = species
+            self.opt['release'] = int(release)
+
+        except ValueError, ve:
+            self.error("package files must be called 'species_release.tgz'")
+            sys.exit(1)
+
+        self.transcriptome = Transcriptome(self.opt)
+
+    def _run(self) :
+        return self.transcriptome.unpackage(self.opt['input-file'])         
 

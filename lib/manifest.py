@@ -4,6 +4,7 @@ import re
 import string
 import hashlib
 import threading
+import time
 
 from os.path import join, exists
 from glob import glob
@@ -35,11 +36,12 @@ class Manifest(Base) :
         self.genes = set()
         self.realign = []
 
-        if skip_checks :
-            return
-
         try :
-            self.genes, self.realign = self._validate()
+            if not skip_checks :
+                self.genes, self.realign = self._validate()
+            else :
+                f2md5 = self._load()
+                self.genes = set(f2md5.keys())
 
         except ManifestError, me :
             self._create_manifest()
@@ -51,13 +53,16 @@ class Manifest(Base) :
         except IOError, ioe :
             raise ManifestError("could not create manifest file in %s: %s" % (self.dir, ioe.strerror))
 
+    def is_empty(self) :
+        return len(self.genes) == 0
+
     # would be nice to set a flag, but then the checks can be skipped
     # and then something else would have to be done
     def is_complete(self) :
         return exists(join(self.dir, self.done_filename))
 
     def complete(self) :
-        self.append_to_manifest(self.done_filename, '', create=True)
+        self.append_to_manifest(self.done_filename, time.ctime(), create=True)
 
     def get_genes(self) :
         return self.genes

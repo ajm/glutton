@@ -6,6 +6,7 @@ if sys.version_info < (2,7) :
 
 try :
     import cogent
+    del cogent
 
 except ImportError :
     print >> sys.stderr, "Error: pycogent is not installed! (tested with version 1.5.3)\n"
@@ -15,6 +16,7 @@ import os
 import getopt
 
 import lib.subcommands
+
 
 databases = {
              'ensembl' : { 
@@ -30,26 +32,15 @@ databases = {
              }
 
 commands = {
-            'build'     : lib.subcommands.build,
-            'fix'       : lib.subcommands.fix,
-            'assemble'  : lib.subcommands.assemble,
-            'align'     : lib.subcommands.align,
-            'debug'     : lib.subcommands.debug,
-            'list'      : lib.subcommands.list_ensembl,
-            'pack'      : lib.subcommands.pack,
-            'unpack'    : lib.subcommands.unpack
-           }
-
-required_programs = {
-            'build'     : ['prank','fastareformat','fasta2esd','esd2esi'],
-            'fix'       : ['fastareformat','fasta2esd','esd2esi'],
-            'assemble'  : ['sga'],
-            'align'     : ['pagan','exonerate-server','exonerate'],
-            'debug'     : [],
-            'list'      : [],
-            'pack'      : [],
-            'unpack'    : []
-           }
+            'build'     : lib.subcommands.BuildCommand,
+            'fix'       : lib.subcommands.FixCommand,
+            'assemble'  : lib.subcommands.AssembleCommand,
+            'align'     : lib.subcommands.AlignCommand,
+            'list'      : lib.subcommands.ListCommand,
+            'pack'      : lib.subcommands.PackCommand,
+            'unpack'    : lib.subcommands.UnpackCommand,
+            'rm'        : lib.subcommands.RmCommand   
+        }
 
 def get_default_options() :
     return {
@@ -57,11 +48,9 @@ def get_default_options() :
             'species'       : None,
             'release'       : None,
             'list'          : None,
-            'workingdir'    : os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache'),
+            'dbdir'    : os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache'),
             'tmpdir'        : os.environ.get('TMPDIR', '/tmp'),
-            'restart'       : False,
-            'verbose'       : False,
-            'species2'      : None,
+            'verbose'       : True,
             'db-host'       : None,
             'db-port'       : None,
             'db-user'       : None,
@@ -74,18 +63,15 @@ def get_default_options() :
             'fasta2esd'     : 'fasta2esd',
             'esd2esi'       : 'esd2esi',
             'threads'       : 1,
-            'alignment-only': False,
             'force'         : False,
-            'contig-minlen' : 200,
-            'contig-file'   : None,
-            'contig-outdir' : None
+            'min-length'    : 200,
+            'input-file'   : None,
+            'output-dir' : None
            }
 
 def get_commands() :
     global commands
     tmp = commands.keys() 
-
-    tmp.remove('debug')
 
     return tmp
 
@@ -142,35 +128,7 @@ def pretty(l) :
     return list_sentence(bold_all(quote_all(map(str, sorted(l)))))
 
 def get_required_programs() :
-    tmp = set()
-
-    for i in required_programs :
-        tmp.update(required_programs[i])
-
-    return sorted(list(tmp))
-
-def program_exists(programname) :
-    for p in os.environ['PATH'].split(os.pathsep) :
-        progpath = os.path.join(p, programname)
-        if os.path.isfile(progpath) :
-            # there may be another executable with the correct
-            # permissions lower down in the path, but the shell
-            # would not find it, so just return here...
-            return os.access(progpath, os.X_OK)
-
-    return False
-
-def check_local_installation(required_programs) :
-    bad = False
-
-    # ensure required programs are installed locally
-    for prog in required_programs :
-        if not program_exists(prog) :
-            print >> sys.stderr, "Error: '%s' is not installed." % prog
-            bad = True
-
-    if bad :
-        sys.exit(1)
+    return ['esd2esi','exonerate','exonerate-server','fasta2esd','fastareformat','pagan','prank','sga']
 
 def usage() :
     global databases
@@ -197,15 +155,15 @@ Legal commands are %s (see below for options).
     -r      --release='release'
 
 %s options:
-    -i      --input='file'
+    -i      --input-file='file'
 
 %s options:
     -l      --list                  (list downloaded species and release versions)
     -s      --species='species'     (no default, use --list for options locally available, MANDATORY)
     -r      --release='release'     (default = latest available locally)
     -m      --min-length=NUM        (minimum length of contig to align, default = %d)
-    -i      --input='file'          (input file containing contigs, MANDATORY)
-    -o      --output='dir'          (output directory, default = location of contig file)
+    -i      --input-file='file'     (input file containing contigs, MANDATORY)
+    -o      --output-dir='dir'      (output directory, default = location of contig file)
 
 %s options:
             --prank='location'      (default = None, use system-wide version)
@@ -231,9 +189,9 @@ Legal commands are %s (see below for options).
         bold('pack'),
         bold('unpack'),
         bold('align'),
-        options['contig-minlen'],
+        options['min-length'],
         bold('misc'),
-        options['workingdir'], 
+        options['dbdir'], 
         options['tmpdir'],
         options['threads'])
 
@@ -242,9 +200,23 @@ def expect_int(parameter, argument) :
         return int(argument)
 
     except ValueError, ve :
-        print >> sys.stderr, "Problem parsing argument for %s: %s\n" % (parameter, str(ve))
+        print >> sys.stderr, "Error: parsing argument for %s: %s\n" % (parameter, str(ve))
         usage()
         sys.exit(1)
+
+def expect_file(parameter, argument) :
+    if not os.path.isfile(argument) :
+        print >> sys.stderr, "Error: file '%s' does not exist" % argument
+        sys.exit(1)
+
+    return os.path.abspath(argument)
+
+def expect_dir(parameter, argument) :
+    if not os.path.isdir(argument) :
+        print >> sys.stderr, "Error: directory '%s' does not exist" % argument
+        sys.exit(1)
+
+    return os.path.abspath(argument)
 
 def parse_args(argv) :
     global databases
@@ -254,7 +226,7 @@ def parse_args(argv) :
     try :
         opts,args = getopt.getopt(
                         argv,
-                        "s:ld:r:a:b:t:c:vhfm:i:o:",
+                        "s:ld:r:b:t:c:vhfm:i:o:",
                         [   
                             "species=", 
                             "species2=",
@@ -264,7 +236,6 @@ def parse_args(argv) :
                             "list",
                             "verbose", 
                             "help",
-                            "restart",
                             "database=",
                             "specify-db=",
                             "prank=",
@@ -272,11 +243,10 @@ def parse_args(argv) :
                             "sga=",
                             "exonerate=",
                             "threads=",
-                            "alignment-only",
                             "force",
                             "min-length=",
-                            "input=",
-                            "output="
+                            "input-file=",
+                            "output-dir="
                         ]
                     )
 
@@ -299,19 +269,13 @@ def parse_args(argv) :
             options['species'] = a
 
         elif o in ('-b', '--dbdir') :
-            options['workingdir'] = os.path.abspath(a)
+            options['dbdir'] = os.path.abspath(a)
 
         elif o in ('-t', '--tmpdir') :
             options['tmpdir'] = os.path.abspath(a)
 
         elif o in ('-r', '--release') :
-            options['release'] = expect_int("release", a)
-
-        elif o in ('--restart') :
-            options['restart'] = True
-
-        elif o in ('-a', '--alignment-only') :
-            options['alignment-only'] = True
+            options['release'] = expect_int('release', a)
 
         elif o in ('-d', '--database') :
             options['database'] = a
@@ -320,13 +284,13 @@ def parse_args(argv) :
             parse_database_string(a, options)
 
         elif o in ('-m', '--min-length') :
-            options['contig-minlen'] = expect_int("min-length", a)
+            options['min-length'] = expect_int('min-length', a)
 
-        elif o in ('-i', '--input') :
-            options['contig-file'] = os.path.abspath(a)
+        elif o in ('-i', '--input-file') :
+            options['input-file'] = expect_file('input-file', a)
 
         elif o in ('-o', '--output-dir') :
-            options['contig-outdir'] = os.path.abspath(a)
+            options['output-dir'] = expect_dir('output-dir', a)
 
         elif o in ('--prank', '--pagan', '--exonerate', '--sga') :
             program = o[2:]
@@ -346,21 +310,16 @@ def parse_args(argv) :
             assert False, "unhandled option %s" % o
 
     
-    # check whether option combinations make sense
-    if options['alignment-only'] and options['restart'] :
-        print >> sys.stderr, "Error: 'alignment-only' and 'restart' cannot be used together, exiting..."
-        sys.exit(1)
-
-    if options['database'] not in databases.keys() :
+    if options['database'] not in databases :
         print >> sys.stderr, "Error: %s is not a predefined database, valid options are: %s" % \
-                (pretty([options['database']]), pretty(databases.keys()))
+                (quote(options['database']), list_sentence(quote_all(databases.keys())))
         sys.exit(1)
 
     if options['database'] != 'user-defined' :
         fill_in_database_info(options)
 
-    if options['contig-file'] and not options['contig-outdir']:
-        options['contig-outdir'] = os.path.dirname(options['contig-file'])
+    if options['input-file'] and not options['output-dir']:
+        options['output-dir'] = os.path.dirname(options['input-file'])
 
     return options
 
@@ -375,8 +334,7 @@ def main() :
     options = parse_args(sys.argv[2:])
 
     if sys.argv[1] in commands :
-        check_local_installation(required_programs[sys.argv[1]])
-        return commands[sys.argv[1]](options)
+        return commands[sys.argv[1]](options).run()
 
     print >> sys.stderr, "Error: command %s not recognised, valid command are %s" % \
             (pretty([sys.argv[1]]), pretty(get_commands()))

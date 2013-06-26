@@ -22,6 +22,11 @@ class WorkQueue(Base):
         self.running = False
         self.no_more_jobs = False
 
+        self.start()
+
+    def __del__(self) :
+        self.stop()
+
     def _introspect_cores(self) :
         return cpu_count()
 
