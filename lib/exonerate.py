@@ -21,6 +21,9 @@ class ExonerateServer(Base) :
         if not os.path.isfile(os.path.join(self.dir, self.db_name + '.esi')) :
             raise ExonerateError("database called '%s' not found in dir '%s'" % (self.db_name, self.dir))
 
+    def __del__(self) :
+        self.stop()
+
     def _wait_until_listening(self) :
         out = []
         
@@ -43,6 +46,10 @@ class ExonerateServer(Base) :
 
         args = ['exonerate-server', self.db_name + '.esi',
                 '--port', str(self.port)]
+
+        subprocess.call(['killall', 'exonerate-server'], 
+                        stdout=open('/dev/null', 'w'), 
+                        stderr=subprocess.STDOUT)
 
         self.exonerate = subprocess.Popen(args,
                                     cwd=self.dir,

@@ -50,7 +50,7 @@ def get_default_options() :
             'list'          : None,
             'dbdir'    : os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache'),
             'tmpdir'        : os.environ.get('TMPDIR', '/tmp'),
-            'verbose'       : True,
+            'verbose'       : False,
             'db-host'       : None,
             'db-port'       : None,
             'db-user'       : None,

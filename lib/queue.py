@@ -76,6 +76,9 @@ class WorkQueue(Base):
 
         self.q.join()
 
+    def size(self) :
+        return self.q.qsize()
+
     # block until the queue is drained
     def done(self) :
         self.no_more_jobs = True

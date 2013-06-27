@@ -2,6 +2,7 @@ import sys
 import tempfile
 import os
 import subprocess
+import time
 
 from os.path import join, basename
 from glob import glob
@@ -144,7 +145,9 @@ class Transcriptome(Base) :
 
         qm = QueryManager(self.opt, contig_fname, contig_outdir, min_length)
 
+        total = 0
         for fname in qm :
+            total += 1
             self.q.enqueue(
                     PaganJob(
                         self.opt,
@@ -153,6 +156,23 @@ class Transcriptome(Base) :
                         contig_outdir
                         )
                     )
+            # XXX DEBUG
+            if total == 50 :
+                break
+
+        if not self.verbose :
+            tmp = float(total) / 100
+            msg = "aligning to %s:%d" % (self.species, self.release)
+            while True :
+                done = total - self.q.size()
+                percent = done / tmp
+                self.overwrite('Progress', "%s %d%% (%d / %d) " % (msg, int(percent), done, total))
+                
+                if self.q.size() == 0 :
+                    self.overwrite('Progress', "%s done! (%d / %d) " % (msg, done, total), nl=True)
+                    break
+
+                time.sleep(1)
 
         self.q.join()
         self.exonerate.stop()

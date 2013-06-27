@@ -110,7 +110,10 @@ class Base(object) :
         self._p('Error', s, print_anyway=True)
 
     def progress(self, msg, percent) :
-        self._p('Prog', "%s: %d%%\r" % (msg, int(percent)), newline=False)
+        self._p('Progress', "%s: %d%%\r" % (msg, int(percent)), newline=False, print_anyway=True)
+
+    def overwrite(self, tag, msg, nl=False) :
+        self._p('\r' + tag, msg, newline=nl, print_anyway=True)
 
     def rm(self, files) :
         if not isinstance(files, list) :
