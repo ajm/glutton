@@ -65,8 +65,9 @@ def get_default_options() :
             'threads'       : 1,
             'force'         : False,
             'min-length'    : 200,
-            'input-file'   : None,
-            'output-dir' : None
+            'input-file'    : None,
+            'output-dir'    : None,
+            'use-exonerate-server' : False
            }
 
 def get_commands() :
@@ -164,6 +165,7 @@ Legal commands are %s (see below for options).
     -m      --min-length=NUM        (minimum length of contig to align, default = %d)
     -i      --input-file='file'     (input file containing contigs, MANDATORY)
     -o      --output-dir='dir'      (output directory, default = location of contig file)
+            --use-exonerate-server
 
 %s options:
             --prank='location'      (default = None, use system-wide version)
@@ -246,7 +248,8 @@ def parse_args(argv) :
                             "force",
                             "min-length=",
                             "input-file=",
-                            "output-dir="
+                            "output-dir=",
+                            "use-exonerate-server"
                         ]
                     )
 
@@ -305,6 +308,9 @@ def parse_args(argv) :
 
         elif o in ('-f', '--force') :
             options['force'] = True
+
+        elif o in ('--use-exonerate-server') :
+            options['use-exonerate-server'] = True
 
         else :
             assert False, "unhandled option %s" % o

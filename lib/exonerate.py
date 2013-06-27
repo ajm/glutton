@@ -68,14 +68,21 @@ class ExonerateServer(Base) :
             self.info("stopped")
 
     def query(self, fname) :
-        args = ['exonerate', fname,
-                'localhost:' + str(self.port),
+        args = ['exonerate',
                 '--bestn', '10',
-                #'--model', 'affine:local', # SEGFAULT on linux
-                '--showalignment', 'no']
+                '--model', 'affine:local',
+                '--showalignment', 'no',
+                fname]
+
+        if self.started() :
+            args.append('localhost:' + str(self.port))
+        else :
+            args.append(self.db_name + '.fa')
 
         try :
-            output = subprocess.check_output(args, stderr=open('/dev/null', 'w'))
+            output = subprocess.check_output(args, 
+                                             cwd=self.dir, 
+                                             stderr=open('/dev/null', 'w'))
 
         except subprocess.CalledProcessError, cpe :
             #self.error("exonerate did not run properly, returncode = %d\n\n%s" % (cpe.returncode, cpe.output))

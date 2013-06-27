@@ -141,7 +141,9 @@ class Transcriptome(Base) :
         self._check_dir(contig_outdir, create=True)
         
         self.exonerate = ExonerateServer(self.opt, self.dir, self.db_name)
-        self.exonerate.start()
+        
+        if self.opt['use-exonerate-server'] :
+            self.exonerate.start()
 
         qm = QueryManager(self.opt, contig_fname, contig_outdir, min_length)
 
