@@ -146,8 +146,6 @@ Legal commands are %s (see below for options).
     -s      --species='species'     (no default, use --list for options with current database, MANDATORY)
     -r      --release='release'     (default = latest)
     -d      --database='db string'  (default = %s, valid arguments : %s)
-    -a      --alignment-only        (default = False, assumes --restart is not used)
-            --restart               (default = False, start downloading from scratch)
             --specify-db='db info'  ('db info' is comma separated host, port, username, password)
 
 %s options:

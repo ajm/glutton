@@ -110,9 +110,9 @@ class Transcriptome(Base) :
                         )
 
             # XXX DEBUG CODE
-            count += 1
-            if count == 5 :
-                break
+            #count += 1
+            #if count == 5 :
+            #    break
 
         self.info('waiting for queue to drain...')
         self.q.join()
@@ -158,9 +158,10 @@ class Transcriptome(Base) :
                         contig_outdir
                         )
                     )
+
             # XXX DEBUG
-            if total == 50 :
-                break
+            #if total == 50 :
+            #    break
 
         if not self.verbose :
             tmp = float(total) / 100
