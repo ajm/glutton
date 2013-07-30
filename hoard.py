@@ -212,9 +212,9 @@ def expect_file(parameter, argument) :
     return os.path.abspath(argument)
 
 def expect_dir(parameter, argument) :
-    if not os.path.isdir(argument) :
-        print >> sys.stderr, "Error: directory '%s' does not exist" % argument
-        sys.exit(1)
+    #if not os.path.isdir(argument) :
+    #    print >> sys.stderr, "Error: directory '%s' does not exist" % argument
+    #    sys.exit(1)
 
     return os.path.abspath(argument)
 
