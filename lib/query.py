@@ -69,7 +69,12 @@ class QueryManager(Base) :
             if len(seq) < self.min_length :
                 continue
 
-            query_fname = "%s%s" % (self.query_prefix, label.replace(' ', '-'))
+            # exonerate does not like filenames with ':' (it assumes it is a URL)
+            # the sequence id can be quite long, so only use the first token and
+            # search and replace ':' with '-' just in case
+            label = label.split()[0].replace(':', '-')
+
+            query_fname = "%s%s" % (self.query_prefix, label)
 
             if query_fname in self.queries :
                 self.info("skipped %s (already done)" % query_fname)
