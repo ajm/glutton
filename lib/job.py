@@ -153,5 +153,8 @@ class PaganJob(Job) :
         if ret != 0 :
             self._safe_write(join(self.outdir, 'failures.txt'), basename(self.fname))
 
+        # remove query file
+        os.remove(self.fname)
+
         return ret
 

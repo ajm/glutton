@@ -165,7 +165,7 @@ class Transcriptome(Base) :
 
         if not self.verbose :
             tmp = float(total) / 100
-            msg = "aligning to %s:%d" % (self.species, self.release)
+            msg = "aligning %s to %s:%d" % (contig_fname, self.species, self.release)
             while True :
                 done = total - self.q.size()
                 percent = done / tmp

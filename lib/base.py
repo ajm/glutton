@@ -167,8 +167,9 @@ class ToolBase(Base) :
                 output = "the following files were missing : %s" % ' '.join(missing)
 
         if returncode > 0 and not self.force :
+            self.error(' '.join([self.binary_location] + parameters))
             self.error("return code = %d\n\n%s\n" % (returncode, output))
-            sys.exit(1)
+            #sys.exit(1)
 
         if returncode != 0 and self.force :
             self.warn("return code = %d" % (returncode))
