@@ -118,6 +118,7 @@ class PaganJob(Job) :
 
         except ExonerateError, ee :
             self.info("%s : %s" % (basename(self.fname), str(ee)))
+            os.remove(self.fname)
             return 1
 
 
