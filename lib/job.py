@@ -93,6 +93,9 @@ class PrankJob(Job) :
         if ret == 0 :
             for f in p.output_filenames() :
                 self.manifest.append_to_manifest(f, self._contents(f), create=True)
+                os.remove(f)
+
+        os.remove(self.fname)
 
         return ret
 
