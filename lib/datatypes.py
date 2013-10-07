@@ -137,6 +137,13 @@ class Sequence(object) :
     def __repr__(self) :
         return repr(self.sequence)
 
+    def reverse_complement(self) :
+        rc = { 'A' : 'T',
+               'T' : 'A',
+               'G' : 'C',
+               'C' : 'G' }
+        return "".join([rc[i] for i in self.sequence[::-1]])
+
     def fasta(self, duplabel=' NumDuplicates') :
         return ">%s%s=%d\n%s\n" % (self.id, duplabel, self.duplicates, self.sequence)
 
@@ -147,15 +154,11 @@ class Sequence(object) :
         return "@%s+\n%s\n" % (self.fasta(duplabel)[1:], self.qual_str)
 
     def __str__(self) :
-        raise Exception
-
-        # TODO sensible default
-
         tmp = '@' if self.qual_str else '>'
-        s = "%s%s\n%s\n" % (tmp, self.id if self.id != None else "seq", self.sequence)
+        s = "%s%s\n%s" % (tmp, self.id if self.id != None else "seq", self.sequence)
         
         if self.qual_str :
-            s += ("+\n%s\n" % self.qual_str)
+            s += ("\n+\n%s" % self.qual_str)
         
         return s
 

@@ -9,6 +9,7 @@ from lib.ensembl import EnsemblInfo
 from lib.local import LocalInfo
 from lib.transcriptome import Transcriptome
 from lib.queue import WorkQueue
+from lib.scaffolder import Scaffolder
 
 
 class Subcommand(Base) :
@@ -131,13 +132,6 @@ class ListCommand(Subcommand) :
         LocalInfo(self.opt).print_species_table()
         return 0
 
-class AssembleCommand(Subcommand) :
-    def __init__(self, opt) :
-        super(AssembleCommand, self).__init__(opt, programs=['sga'], list_option=False)
-
-    def _run(self) :
-        raise NotImplementedError
-
 class AlignCommand(Subcommand) :
     parameters = ['species', 'input-file', 'output-dir', 'min-length']
     programs = ['pagan', 'exonerate-server', 'exonerate']
@@ -160,6 +154,21 @@ class AlignCommand(Subcommand) :
                             self.opt['input-file'], 
                             self.opt['output-dir'], 
                             min_length=self.opt['min-length'])
+        return 0
+
+class ScaffoldCommand(Subcommand) :
+    parameters = ['input-file', 'output-dir', 'min-identity', 'output-file']
+    programs = []
+
+    def __init__(self, opt) :
+        super(ScaffoldCommand, self).__init__(opt, self.parameters, self.programs)
+
+    def _run(self) :
+        Scaffolder(self.opt).scaffold(
+                            self.opt['input-file'],
+                            self.opt['output-dir'],
+                            self.opt['output-file'],
+                            self.opt['min-identity'])
         return 0
 
 class FixCommand(Subcommand) :

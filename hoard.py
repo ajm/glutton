@@ -34,12 +34,12 @@ databases = {
 commands = {
             'build'     : lib.subcommands.BuildCommand,
             'fix'       : lib.subcommands.FixCommand,
-            'assemble'  : lib.subcommands.AssembleCommand,
             'align'     : lib.subcommands.AlignCommand,
             'list'      : lib.subcommands.ListCommand,
             'pack'      : lib.subcommands.PackCommand,
             'unpack'    : lib.subcommands.UnpackCommand,
-            'rm'        : lib.subcommands.RmCommand   
+            'rm'        : lib.subcommands.RmCommand,
+            'scaffold'  : lib.subcommands.ScaffoldCommand
         }
 
 def get_default_options() :
@@ -48,7 +48,7 @@ def get_default_options() :
             'species'       : None,
             'release'       : None,
             'list'          : None,
-            'dbdir'    : os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache'),
+            'dbdir'         : os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache'),
             'tmpdir'        : os.environ.get('TMPDIR', '/tmp'),
             'verbose'       : False,
             'db-host'       : None,
@@ -57,7 +57,6 @@ def get_default_options() :
             'db-pass'       : None,
             'prank'         : 'prank',
             'pagan'         : 'pagan',
-            'sga'           : 'sga',
             'exonerate'     : 'exonerate',
             'fastareformat' : 'fastareformat',
             'fasta2esd'     : 'fasta2esd',
@@ -65,6 +64,8 @@ def get_default_options() :
             'threads'       : 1,
             'force'         : False,
             'min-length'    : 200,
+            'min-identity'  : 0.95,
+            'output-file'   : 'scaffolds.fasta',
             'input-file'    : None,
             'output-dir'    : None,
             'use-exonerate-server' : False
@@ -129,7 +130,7 @@ def pretty(l) :
     return list_sentence(bold_all(quote_all(map(str, sorted(l)))))
 
 def get_required_programs() :
-    return ['esd2esi','exonerate','exonerate-server','fasta2esd','fastareformat','pagan','prank','sga']
+    return ['esd2esi','exonerate','exonerate-server','fasta2esd','fastareformat','pagan','prank']
 
 def usage() :
     global databases
@@ -149,14 +150,6 @@ Legal commands are %s (see below for options).
             --specify-db='db info'  ('db info' is comma separated host, port, username, password)
 
 %s options:
-    -l      --list
-    -s      --species='species'
-    -r      --release='release'
-
-%s options:
-    -i      --input-file='file'
-
-%s options:
     -l      --list                  (list downloaded species and release versions)
     -s      --species='species'     (no default, use --list for options locally available, MANDATORY)
     -r      --release='release'     (default = latest available locally)
@@ -166,9 +159,27 @@ Legal commands are %s (see below for options).
             --use-exonerate-server
 
 %s options:
+    -i      --input-file='file'     (input file containing contigs, MANDATORY)
+    -a      --align-dir='dir'       (output directory of 'align' command)
+            --min-identity=FLOAT    (threshold for using alignments, default = %.2f)
+            --output-file='file'    (output of scaffolder, default = %s)
+
+%s options:
+    -l      --list                  (list downloaded species and release versions)
+    -s      --species='species'     (no default, use --list for options locally available, MANDATORY)
+    -r      --release='release'     (no default, use --list for options locally available, MANDATORY)
+
+%s options:
+    -i      --input-file='file'     (no default, 'file' must come from the pack command)
+
+%s options:
+    -l      --list                  (list downloaded species and release versions)
+    -s      --species='species'     (no default, use --list for options locally available, MANDATORY)
+    -r      --release='release'     (no default, use --list for options locally available, MANDATORY)
+
+%s options:
             --prank='location'      (default = None, use system-wide version)
             --exonerate='location'  (default = None, use system-wide version)
-            --sga='location'        (default = None, use system-wide version)
             --pagan='location'      (default = None, use system-wide version)
 
     -b      --dbdir='dir'           (default = %s)
@@ -186,23 +197,33 @@ Legal commands are %s (see below for options).
         bold('build'),
         pretty([options['database']]),
         pretty(databases.keys()),
-        bold('pack'),
-        bold('unpack'),
         bold('align'),
         options['min-length'],
+        bold('scaffold'),
+        options['min-identity'],
+        options['output-file'],
+        bold('pack'),
+        bold('unpack'),
+        bold('rm'),
         bold('misc'),
         options['dbdir'], 
         options['tmpdir'],
         options['threads'])
 
-def expect_int(parameter, argument) :
+def expect_type(parameter, argument, this_type) :
     try :
-        return int(argument)
+        return this_type(argument)
 
     except ValueError, ve :
         print >> sys.stderr, "Error: parsing argument for %s: %s\n" % (parameter, str(ve))
         usage()
         sys.exit(1)
+
+def expect_int(parameter, argument) :
+    return expect_type(parameter, argument, int)
+
+def expect_float(parameter, argument) :
+    return expect_type(parameter, argument, float)
 
 def expect_file(parameter, argument) :
     if not os.path.isfile(argument) :
@@ -211,10 +232,10 @@ def expect_file(parameter, argument) :
 
     return os.path.abspath(argument)
 
-def expect_dir(parameter, argument) :
-    #if not os.path.isdir(argument) :
-    #    print >> sys.stderr, "Error: directory '%s' does not exist" % argument
-    #    sys.exit(1)
+def expect_dir(parameter, argument, should_exist=True) :
+    if should_exist and not os.path.isdir(argument) :
+        print >> sys.stderr, "Error: directory '%s' does not exist" % argument
+        sys.exit(1)
 
     return os.path.abspath(argument)
 
@@ -226,7 +247,7 @@ def parse_args(argv) :
     try :
         opts,args = getopt.getopt(
                         argv,
-                        "s:ld:r:b:t:c:vhfm:i:o:",
+                        "s:ld:r:b:t:c:vhfm:i:o:a:",
                         [   
                             "species=", 
                             "species2=",
@@ -240,14 +261,15 @@ def parse_args(argv) :
                             "specify-db=",
                             "prank=",
                             "pagan=",
-                            "sga=",
                             "exonerate=",
                             "threads=",
                             "force",
                             "min-length=",
                             "input-file=",
                             "output-dir=",
-                            "use-exonerate-server"
+                            "use-exonerate-server",
+                            "align-dir=",
+                            "min-identity="
                         ]
                     )
 
@@ -291,9 +313,12 @@ def parse_args(argv) :
             options['input-file'] = expect_file('input-file', a)
 
         elif o in ('-o', '--output-dir') :
+            options['output-dir'] = expect_dir('output-dir', a, should_exist=False)
+
+        elif o in ('-a', '--align-dir') :
             options['output-dir'] = expect_dir('output-dir', a)
 
-        elif o in ('--prank', '--pagan', '--exonerate', '--sga') :
+        elif o in ('--prank', '--pagan', '--exonerate') :
             program = o[2:]
             options[program] = os.path.join(a, program)
 
@@ -310,6 +335,13 @@ def parse_args(argv) :
         elif o in ('--use-exonerate-server') :
             options['use-exonerate-server'] = True
 
+        elif o in ('--min-identity') :
+            tmp = expect_float('min-identity', a)
+            if tmp < 0.0 or tmp > 1.0 :
+                print >> sys.stderr, "Error: min-identity must be in range 0.0 - 1.0\n"
+                sys.exit(1)
+            
+            options['min-identity'] = tmp
         else :
             assert False, "unhandled option %s" % o
 

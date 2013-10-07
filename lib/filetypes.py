@@ -149,7 +149,7 @@ class FastqFile(DataFile) :
                 None if self._current[FastqFile.QUAL] == "" else self._current[FastqFile.QUAL])
         
         # hack, maybe make more documented
-        tmp.id = seqid
+        tmp.id = seqid[1:]
         tmp.duplicates = duplicates
 
         return tmp

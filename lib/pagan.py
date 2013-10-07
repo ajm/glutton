@@ -29,7 +29,8 @@ class Pagan(ToolBase) :
                       "--fast-placement",
                       "--test-every-terminal-node",
                       "--translate", 
-                      "--find-best-orf"
+                      "--find-best-orf",
+                      "--threads", "1"
                      ]
 
         if self.tree_file :
