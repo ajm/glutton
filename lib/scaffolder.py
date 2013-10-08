@@ -96,7 +96,7 @@ class Scaffolder(Base) :
     def __init__(self, opt) :
         super(Scaffolder, self).__init__(opt)
 
-        self.pagan_pattern = re.compile("^(comp\d+_c\d+_seq\d+).*")
+        self.pagan_pattern = re.compile("(.*)(\[\-?\d+\ \d+\-\d+\]|\.orf\.\-?\d+\.\d+\.\d+)")
         self.out_file = None
 
     def __get_protein_alignments(self, d) :
@@ -161,7 +161,7 @@ class Scaffolder(Base) :
     def __munge_contigname(self, name) :
         return name.split()[0]
 
-    # needs to be regex to account for ".orf" and "]x" names
+    # needs to be regex to account for ".orf" and "[x" names
     def __munge_paganorfname(self, name) :
         m = self.pagan_pattern.match(name)
         
