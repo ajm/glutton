@@ -3,7 +3,7 @@ import subprocess
 import tempfile
 import os
 
-from lib.base import ToolBase, Base
+from glutton.base import ToolBase, Base
 
 
 class ExonerateError(Exception) :

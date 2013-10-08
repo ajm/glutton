@@ -5,8 +5,8 @@ import re
 from cogent.db.ensembl import Species, Genome, Compara, HostAccount
 from cogent.db.ensembl.database import Database
 
-from lib.base import Base
-from lib.genefamily import GeneFamily
+from glutton.base import Base
+from glutton.genefamily import GeneFamily
 
 class EnsemblDbInfo(object) :
     def __init__(self, db_name, low_release, high_release) :

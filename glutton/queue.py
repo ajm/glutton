@@ -5,8 +5,8 @@ import time
 
 from multiprocessing import cpu_count
 
-from lib.job import Job, JobError
-from lib.base import Base
+from glutton.job import Job, JobError
+from glutton.base import Base
 
 
 class WorkQueueError(Exception) :

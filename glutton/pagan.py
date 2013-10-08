@@ -1,6 +1,6 @@
 import os
 
-from lib.base import ToolBase
+from glutton.base import ToolBase
 
 class Pagan(ToolBase) :
     def __init__(self, opt, alignment_file, tree_file, query_file, out_dir) :

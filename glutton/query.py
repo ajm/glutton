@@ -3,7 +3,7 @@ from glob import glob
 
 from cogent.parse.fasta import MinimalFastaParser
 
-from lib.base import Base
+from glutton.base import Base
 
 class QueryManager(Base) :
     query_prefix = 'query_'

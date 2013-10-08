@@ -1,0 +1,13 @@
+Glutton: Transcriptome Scaffolding using Evolutionary Alignment
+
+
+glutton check
+
+glutton build
+glutton align
+glutton scaffold
+
+glutton list
+glutton pack
+glutton unpack
+glutton rm

@@ -4,12 +4,11 @@ import operator
 
 from os.path import join
 from glob import glob
-from itertools import izip, combinations
+from itertools import izip
 
-from lib.base import Base
-from lib.filetypes import FastqFile
-from lib.datatypes import Sequence
-from lib.progress import Progress
+from glutton.base import Base
+from glutton.filetypes import FastqFile
+from glutton.datatypes import Sequence
 
 
 class MergeError(Exception) :

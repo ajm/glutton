@@ -3,7 +3,7 @@ import os
 import re
 import datetime
 
-from lib.datatypes import Sequence, IUPAC
+from glutton.datatypes import Sequence, IUPAC
 
 
 class DataFileError(Exception):

@@ -15,7 +15,7 @@ except ImportError :
 import os
 import getopt
 
-import lib.subcommands
+import glutton.subcommands
 
 
 databases = {
@@ -32,14 +32,14 @@ databases = {
              }
 
 commands = {
-            'build'     : lib.subcommands.BuildCommand,
-            'fix'       : lib.subcommands.FixCommand,
-            'align'     : lib.subcommands.AlignCommand,
-            'list'      : lib.subcommands.ListCommand,
-            'pack'      : lib.subcommands.PackCommand,
-            'unpack'    : lib.subcommands.UnpackCommand,
-            'rm'        : lib.subcommands.RmCommand,
-            'scaffold'  : lib.subcommands.ScaffoldCommand
+            'build'     : glutton.subcommands.BuildCommand,
+            'fix'       : glutton.subcommands.FixCommand,
+            'align'     : glutton.subcommands.AlignCommand,
+            'list'      : glutton.subcommands.ListCommand,
+            'pack'      : glutton.subcommands.PackCommand,
+            'unpack'    : glutton.subcommands.UnpackCommand,
+            'rm'        : glutton.subcommands.RmCommand,
+            'scaffold'  : glutton.subcommands.ScaffoldCommand
         }
 
 def get_default_options() :

@@ -1,4 +1,4 @@
-from lib.base import ToolBase
+from glutton.base import ToolBase
 
 class Prank(ToolBase) :
     def __init__(self, opt, infile) :

@@ -1,10 +1,10 @@
 import os
 
-from lib.base import Base
-from lib.manifest import Manifest, ManifestError
-from lib.prank import Prank
-from lib.pagan import Pagan
-from lib.exonerate import ExonerateError
+from glutton.base import Base
+from glutton.manifest import Manifest, ManifestError
+from glutton.prank import Prank
+from glutton.pagan import Pagan
+from glutton.exonerate import ExonerateError
 
 from abc import abstractmethod
 from os.path import basename, isfile, join

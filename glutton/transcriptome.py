@@ -7,13 +7,13 @@ import time
 from os.path import join, basename
 from glob import glob
 
-from lib.base import Base
-from lib.manifest import Manifest, ManifestError
-from lib.ensembl import EnsemblDownloader
-from lib.job import PrankJob, PaganJob
-from lib.exonerate import ExonerateDBBuilder, ExonerateServer
-from lib.genefamily import GeneFamily
-from lib.query import QueryManager
+from glutton.base import Base
+from glutton.manifest import Manifest, ManifestError
+from glutton.ensembl import EnsemblDownloader
+from glutton.job import PrankJob, PaganJob
+from glutton.exonerate import ExonerateDBBuilder, ExonerateServer
+from glutton.genefamily import GeneFamily
+from glutton.query import QueryManager
 
 
 class Transcriptome(Base) :

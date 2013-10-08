@@ -4,12 +4,12 @@ import os
 import subprocess
 import shutil
 
-from lib.base import Base
-from lib.ensembl import EnsemblInfo
-from lib.local import LocalInfo
-from lib.transcriptome import Transcriptome
-from lib.queue import WorkQueue
-from lib.scaffolder import Scaffolder
+from glutton.base import Base
+from glutton.ensembl import EnsemblInfo
+from glutton.local import LocalInfo
+from glutton.transcriptome import Transcriptome
+from glutton.queue import WorkQueue
+from glutton.scaffolder import Scaffolder
 
 
 class Subcommand(Base) :
