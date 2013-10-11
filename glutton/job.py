@@ -50,10 +50,9 @@ class Job(Base) :
 
     def run(self) :
         self.start()
-        ret = self._run()
+        
         try :
-            #ret = self._run()
-            pass
+            ret = self._run()
 
         except Exception, e :
             self.error(str(e))
