@@ -3,6 +3,7 @@ import signal
 import os
 import subprocess
 import shutil
+import time
 
 from glutton.base import Base
 from glutton.ensembl import EnsemblInfo
@@ -10,6 +11,8 @@ from glutton.local import LocalInfo
 from glutton.transcriptome import Transcriptome
 from glutton.queue import WorkQueue
 from glutton.scaffolder import Scaffolder
+from glutton.query import QueryManager
+from glutton.job import PaganJob
 
 
 class Subcommand(Base) :
@@ -104,7 +107,7 @@ class BuildCommand(Subcommand) :
     def __init__(self, opt) :
         super(BuildCommand, self).__init__(opt, self.parameters, self.programs, local=False)
 
-        self.transcriptome = Transcriptome(opt, WorkQueue(opt, opt['threads']))
+        self.transcriptome = Transcriptome(opt)
         self._init()
 
     def _init(self) :
@@ -138,8 +141,6 @@ class AlignCommand(Subcommand) :
     
     def __init__(self, opt) :
         super(AlignCommand, self).__init__(opt, self.parameters, self.programs)
-
-        self.transcriptome = Transcriptome(opt, WorkQueue(opt, opt['threads']), skip_checks=True)
         self._init()
 
     def _init(self) :
@@ -150,11 +151,40 @@ class AlignCommand(Subcommand) :
         signal.signal(signal.SIGINT, _cleanup)
 
     def _run(self) :
-        self.transcriptome.align(
-                            self.opt['input-file'], 
-                            self.opt['output-dir'], 
-                            min_length=self.opt['min-length'])
-        return 0
+        self._check_dir(self.opt['output-dir'], create=True)
+
+        qm = QueryManager(self.opt, self.opt['input-file'], self.opt['output-dir'], self.opt['min-length'])
+        total = qm.num_of_queries()
+
+        q = WorkQueue(self.opt, self.opt['threads'])
+        transcriptome = Transcriptome(self.opt)
+
+        for fname in qm :
+            q.enqueue(
+                PaganJob(
+                    self.opt,
+                    transcriptome,
+                    fname,
+                    self.opt['output-dir']
+                )
+            )
+
+            self.overwrite("Progress", "aligning contigs to %s:%d (%d / %d)" % \
+                (self.opt['species'], self.opt['release'], q.jobs_completed, total))
+
+        if not self.verbose :
+            while True :
+                self.overwrite("Progress", "aligning contigs to %s:%d (%d / %d)" % \
+                    (self.opt['species'], self.opt['release'], q.jobs_completed, total))
+
+                if q.size() == 0 :
+                    self.overwrite("Progress", "aligning contigs to %s:%d (%d / %d) done!" % \
+                        (self.opt['species'], self.opt['release'], q.jobs_completed, total), nl=True)
+                    break
+
+                time.sleep(2)
+
+        q.join()
 
 class ScaffoldCommand(Subcommand) :
     parameters = ['input-file', 'output-dir', 'min-identity', 'output-file']

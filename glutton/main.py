@@ -68,7 +68,6 @@ def get_default_options() :
             'output-file'   : 'scaffolds.fasta',
             'input-file'    : None,
             'output-dir'    : None,
-            'use-exonerate-server' : False
            }
 
 def get_commands() :
@@ -156,7 +155,6 @@ Legal commands are %s (see below for options).
     -m      --min-length=NUM        (minimum length of contig to align, default = %d)
     -i      --input-file='file'     (input file containing contigs, MANDATORY)
     -o      --output-dir='dir'      (output directory, default = location of contig file)
-            --use-exonerate-server
 
 %s options:
     -i      --input-file='file'     (input file containing contigs, MANDATORY)
@@ -267,7 +265,6 @@ def parse_args(argv) :
                             "min-length=",
                             "input-file=",
                             "output-dir=",
-                            "use-exonerate-server",
                             "align-dir=",
                             "min-identity="
                         ]
@@ -331,9 +328,6 @@ def parse_args(argv) :
 
         elif o in ('-f', '--force') :
             options['force'] = True
-
-        elif o in ('--use-exonerate-server') :
-            options['use-exonerate-server'] = True
 
         elif o in ('--min-identity') :
             tmp = expect_float('min-identity', a)

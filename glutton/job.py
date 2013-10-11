@@ -50,10 +50,11 @@ class Job(Base) :
 
     def run(self) :
         self.start()
-        
+        ret = self._run()
         try :
-            ret = self._run()
-    
+            #ret = self._run()
+            pass
+
         except Exception, e :
             self.error(str(e))
             self.end(Job.INTERNAL_ERROR)
@@ -94,8 +95,6 @@ class PrankJob(Job) :
             for f in p.output_filenames() :
                 self.manifest.append_to_manifest(f, self._contents(f), create=True)
                 os.remove(f)
-
-        os.remove(self.fname)
 
         return ret
 

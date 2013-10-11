@@ -54,7 +54,8 @@ class QueryManager(Base) :
                 continue
 
             f = os.path.basename(f)
-            f,ext = os.path.splitext(f)
+            #f,ext = os.path.splitext(f)
+            f = f.split('.')[0]
             tmp.add(f)
             success_count += 1
 
@@ -84,4 +85,10 @@ class QueryManager(Base) :
             self.queries.add(query_fname)
 
             yield os.path.join(self.dir, query_fname)
+
+    def num_of_queries(self) :
+        count = 0
+        for label,seq in MinimalFastaParser(open(self.fname)) :
+            count += 1
+        return count - len(self.queries)
 

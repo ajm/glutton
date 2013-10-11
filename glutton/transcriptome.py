@@ -10,20 +10,18 @@ from glob import glob
 from glutton.base import Base
 from glutton.manifest import Manifest, ManifestError
 from glutton.ensembl import EnsemblDownloader
-from glutton.job import PrankJob, PaganJob
+from glutton.job import PrankJob
 from glutton.exonerate import ExonerateDBBuilder, ExonerateServer
 from glutton.genefamily import GeneFamily
-from glutton.query import QueryManager
+from glutton.queue import WorkQueue
 
 
 class Transcriptome(Base) :
     file_prefix = 'paralog_'
     db_name = 'db'
 
-    def __init__(self, opt, queue=None, skip_checks=False) :
+    def __init__(self, opt, skip_checks=False) :
         super(Transcriptome, self).__init__(opt)
-
-        self.q = queue
 
         self.species = opt['species']
         self.release = opt['release']
@@ -32,7 +30,7 @@ class Transcriptome(Base) :
 
         self.cancel = False
 
-        self.exonerate = None
+        self.exonerate = ExonerateServer(self.opt, self.dir, self.db_name)
         self.gene2file = None
 
         self._init_manifest(skip_checks)
@@ -55,21 +53,25 @@ class Transcriptome(Base) :
                                (sys.argv[0], self.species, self.release))
             sys.exit(1)
 
+        q = WorkQueue(self.opt, self.opt['threads'])
+
         for fname in self.manifest.get_realignments() :
-            self.q.enqueue(
-                        PrankJob(
-                            self.opt,
-                            self.manifest,
-                            fname
-                            )
-                        )
+            q.enqueue(
+                PrankJob(
+                    self.opt,
+                    self.manifest,
+                    fname
+                )
+            )
 
         # the build may seem complete, but there are alignments missing
-        if self.manifest.is_complete() :
-            if self.manifest.realignments_required() :
-                self.warn("download appears to be complete, but realignments were required, " + \
-                          "waiting for these to finish before proceeding...")
-                self.q.join()
+        #if self.manifest.is_complete() :
+        #    if self.manifest.realignments_required() :
+        #        self.warn("download appears to be complete, but realignments were required, " + \
+        #                  "waiting for these to finish before proceeding...")
+        #        q.join()
+
+        q.join()
 
     def is_cancelled(self) :
         return self.cancel
@@ -89,6 +91,8 @@ class Transcriptome(Base) :
         if self.manifest.is_complete() and not self.force :
             return
 
+        q = WorkQueue(self.opt, self.opt['threads'])
+
         ensembl = EnsemblDownloader(self.opt)
         ensembl.set_already_downloaded(self.manifest.get_genes())
 
@@ -101,21 +105,16 @@ class Transcriptome(Base) :
                 break
 
             if len(gene_family) > 1 :
-                self.q.enqueue(
-                        PrankJob(
-                            self.opt, 
-                            self.manifest, 
-                            fname
-                            )
-                        )
-
-            # XXX DEBUG CODE
-            #count += 1
-            #if count == 5 :
-            #    break
+                q.enqueue(
+                    PrankJob(
+                        self.opt, 
+                        self.manifest, 
+                        fname
+                    )
+                )
 
         self.info('waiting for queue to drain...')
-        self.q.join()
+        q.join()
         self.info('queue drained')
 
         if self.cancel :
@@ -136,52 +135,6 @@ class Transcriptome(Base) :
 
         self.info("complete!")
         return 0
-
-    def align(self, contig_fname, contig_outdir, min_length=200) :
-        self._check_dir(contig_outdir, create=True)
-        
-        self.exonerate = ExonerateServer(self.opt, self.dir, self.db_name)
-        
-        if self.opt['use-exonerate-server'] :
-            self.exonerate.start()
-
-        self.error("aligning %s ..." % contig_fname)
-        qm = QueryManager(self.opt, contig_fname, contig_outdir, min_length)
-
-        total = 0
-        for fname in qm :
-            total += 1
-            self.q.enqueue(
-                    PaganJob(
-                        self.opt,
-                        self,
-                        fname,
-                        contig_outdir
-                        )
-                    )
-
-            # XXX DEBUG
-            #if total == 50 :
-            #    break
-
-        if not self.verbose :
-            tmp = float(total) / 100
-            msg = "aligning to %s:%d" % (self.species, self.release)
-            while True :
-                done = total - self.q.size()
-                percent = done / tmp
-                self.overwrite('Progress', "%s %d%% (%d / %d) " % (msg, int(percent), done, total))
-                
-                if self.q.size() == 0 :
-                    self.overwrite('Progress', "%s done! (%d / %d) " % (msg, done, total), nl=True)
-                    break
-
-                time.sleep(1)
-
-        self.q.join()
-        self.exonerate.stop()
-
-        self.info("complete!")
 
     def query(self, query_fname) :
         return list(set([ self._gene_to_file(i) for i in self.exonerate.query(query_fname) ]))

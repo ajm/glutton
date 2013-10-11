@@ -141,13 +141,13 @@ class Manifest(Base) :
         tmp = []
         
         count = 0
-        total = float(len(f2md5)) / 100
+        total = len(f2md5)
 
         for fname in f2md5 :
             if not self.family_pat.match(fname) :
                 count += 1
-                self.progress('validating gene families', count / total)
-                continue  
+                self.overwrite("Progress", "validating gene families (%d / %d)" % (count, total))
+                continue
 
             try :
                 if self._file_md5(join(self.dir, fname)) == f2md5[fname] :
@@ -160,9 +160,10 @@ class Manifest(Base) :
                 self.warn("%s not found!" % fname)
 
             count += 1
-            self.progress('validating gene families', count / total)
+
+            self.overwrite("Progress", "validating gene families (%d / %d)" % (count, total))
         
-        self.info('validating gene families done.')
+        self.overwrite("Progress", "validating gene families (%d / %d) done!" % (count, total), nl=True)
         return tmp
 
     def _check_alignments(self, f2md5, gene_families) :
@@ -172,11 +173,11 @@ class Manifest(Base) :
         alignment_suffixes = [".1.dnd", ".2.dnd", ".nuc.1.fas", ".nuc.2.fas", ".pep.1.fas", ".pep.2.fas"]
 
         count = 0
-        total = float(len(gene_families)) / 100
+        total = len(gene_families)
 
         for fname in gene_families :
             count += 1
-            self.progress('validating alignments', count / total)
+            self.overwrite("Progress", "validating alignments (%d / %d)" % (count, total))
 
             if self._count_seqs(fname) < 2 :
                 continue
@@ -202,7 +203,7 @@ class Manifest(Base) :
             else :
                 aligned += alignment_files
 
-        self.info('validating alignments done.')
+        self.overwrite("Progress", "validating alignments (%d / %d) done!" % (count, total), nl=True)
 
         return aligned, realign
 

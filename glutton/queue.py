@@ -2,6 +2,7 @@ import sys
 import threading
 import Queue
 import time
+import itertools
 
 from multiprocessing import cpu_count
 
@@ -16,11 +17,17 @@ class WorkQueue(Base):
     def __init__(self, opt, numworkers, qtimeout=1, maxsize=0):
         super(WorkQueue, self).__init__(opt)
 
+        if maxsize == 0 :
+            maxsize = numworkers * 10
+
         self.q = Queue.Queue(maxsize)
         self.workers = self._init_workers(numworkers)
         self.q_timeout = qtimeout
         self.running = False
         self.no_more_jobs = False
+        
+        self.jobs_completed = 0
+        self.jobs_counter = itertools.count()
 
         self.start()
 
@@ -72,7 +79,7 @@ class WorkQueue(Base):
             if self.q.empty() :
                 break
 
-            time.sleep(10)
+            time.sleep(5)
 
         self.q.join()
 
@@ -93,7 +100,13 @@ class WorkQueue(Base):
         
         assert isinstance(j, Job)
 
-        self.q.put(j)
+        while True :
+            try :
+                self.q.put(j, timeout=3600)
+                break
+
+            except Queue.Full :
+                pass
 
     def _consume_queue(self):
         while self.running :
@@ -112,6 +125,7 @@ class WorkQueue(Base):
 
             self.info("completed %s %s" % (str(work), work.state_str()))
             self.q.task_done()
+            self.jobs_completed = self.jobs_counter.next()
 
             if work.terminated() :
                 self.warn("job terminated, thread exiting...")

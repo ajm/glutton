@@ -215,7 +215,14 @@ class EnsemblDownloader(Base) :
                 for paralog in paralogs.Members :
                     paralog_id = paralog.StableId.lower()
                     self.genes.add(paralog_id)
-                    gf[paralog_id] = paralog.getLongestCdsTranscript().Cds
+                    try :
+                        gf[paralog_id] = paralog.getLongestCdsTranscript().Cds
+                    except AttributeError:
+
+                        self.error("show stopping bug: calling getLongestCdsTranscript() on %s returns %s" % (paralog_id, paralog.getLongestCdsTranscript()))
+                        
+                        import os
+                        os._exit(1)
 
             self.info("%s (%d gene%s in family)" % (stableid, len(gf), "s" if len(gf) > 1 else ""))
 
