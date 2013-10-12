@@ -49,7 +49,7 @@ def get_default_options() :
             'species'       : None,
             'release'       : None,
             'list'          : None,
-            'dbdir'         : os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache'),
+            'dbdir'         : os.path.join(os.environ.get('HOME'), '.local/glutton'), #os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache'),
             'tmpdir'        : os.environ.get('TMPDIR', '/tmp'),
             'verbose'       : False,
             'db-host'       : None,

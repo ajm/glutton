@@ -76,7 +76,7 @@ class Subcommand(Base) :
         fill_in = ('species' in self.parameters) and ('release' not in self.parameters)
 
         if not info.is_valid_species(species) :
-            self.error("'%s' is an invalid species" % species)
+            self.error("'%s' not found in %sdatabase" % (species, "local " if self.local else ""))
             sys.exit(1)
 
         if release is None and fill_in :

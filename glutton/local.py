@@ -10,6 +10,9 @@ class LocalInfo(object) :
     def _get_caches(self) :
         tmp = {}
 
+        if not os.path.exists(self.dbdir) :
+            return tmp
+
         for releasedir in os.listdir(self.dbdir) :
             try :
                 release = int(releasedir)
@@ -27,6 +30,11 @@ class LocalInfo(object) :
         return tmp
 
     def print_species_table(self) :
+        
+        if len(self.caches) == 0 :
+            print "no databases found in %s" % self.dbdir
+            return
+
         n_len = len(sorted(self.caches, key=len, reverse=True)[0]) + 2
         r_len = len("Release") + 2
         c_len = len("Complete") + 2
