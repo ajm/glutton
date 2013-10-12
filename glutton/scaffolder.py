@@ -177,15 +177,15 @@ class Scaffolder(Base) :
     #   pagan    : >comp0_c0_seq1.orf.2.1.1779 or >comp10099_c0_seq1[-3 2-682]
     #   original : >comp0_c0_seq1 len=395 path=[184:0-140 390:141-394]
     #
-    def __read_contigs(self, fn, gene2range) :
+    def __fix_query_sequences(self, fn, gene2range) :
+        # what ids are we looking for
         query_ids = set()
-
         for gene in gene2range :
             for i in gene2range[gene] :
                 query_ids.add(i.name)
 
+        # get the sequences for those ids
         query_seqs = {}
-
         f = FastqFile(fn)
         f.open()
 
@@ -196,7 +196,19 @@ class Scaffolder(Base) :
 
         f.close()
 
-        return query_seqs
+        # fix query sequences in gene2range
+        for gene in gene2range :
+            for i in gene2range[gene] :
+                try :
+                    print >> sys.stderr, "PAGAN: %d %s" % (len(i.seq), i.seq)
+                    print >> sys.stderr, "ORIGI: %d %s" % (len(query_seqs[i.name]), query_seqs[i.name])
+                    i.seq = query_seqs[i.name]
+
+                except KeyError, ke :
+                    self.error("did not find the original sequence for %s" % i.name)
+                    sys.exit(1)
+
+        return gene2range
 
     def __extract_alignment_ranges(self, alignment_dir, min_identity) :
         gene2range = {}
@@ -238,6 +250,7 @@ class Scaffolder(Base) :
     def scaffold(self, contig_filename, alignment_dir, output_filename, min_identity) :
         # extract alignment info
         gene2range = self.__extract_alignment_ranges(alignment_dir, min_identity)
+        #gene2range = self.__fix_query_sequences(contig_filename, gene2range)
         num_contigs = sum([len(i) for i in gene2range.values()])
         self.info("found %d queries aligned to %d genes" % (num_contigs, len(gene2range)))
 

@@ -107,7 +107,7 @@ class BuildCommand(Subcommand) :
     def __init__(self, opt) :
         super(BuildCommand, self).__init__(opt, self.parameters, self.programs, local=False)
 
-        self.transcriptome = Transcriptome(opt)
+        self.transcriptome = Transcriptome(opt, allow_partial=True)
         self._init()
 
     def _init(self) :
@@ -169,22 +169,27 @@ class AlignCommand(Subcommand) :
                 )
             )
 
-            self.overwrite("Progress", "aligning contigs to %s:%d (%d / %d)" % \
-                (self.opt['species'], self.opt['release'], q.jobs_completed, total))
-
-        if not self.verbose :
-            while True :
+            if not self.verbose :
                 self.overwrite("Progress", "aligning contigs to %s:%d (%d / %d)" % \
                     (self.opt['species'], self.opt['release'], q.jobs_completed, total))
 
-                if q.size() == 0 :
-                    self.overwrite("Progress", "aligning contigs to %s:%d (%d / %d) done!" % \
-                        (self.opt['species'], self.opt['release'], q.jobs_completed, total), nl=True)
-                    break
-
+        if not self.verbose :
+            while True :
                 time.sleep(2)
 
+                if q.size() == 0 :
+                    break
+
+                self.overwrite("Progress", "aligning contigs to %s:%d (%d / %d)" % \
+                    (self.opt['species'], self.opt['release'], q.jobs_completed, total))
+
         q.join()
+
+        if not self.verbose :
+            self.overwrite("Progress", "aligning contigs to %s:%d (%d / %d) done!" % \
+                (self.opt['species'], self.opt['release'], q.jobs_completed, total), nl=True)
+
+        return 0
 
 class ScaffoldCommand(Subcommand) :
     parameters = ['input-file', 'output-dir', 'min-identity', 'output-file']
@@ -208,7 +213,7 @@ class FixCommand(Subcommand) :
     def __init__(self, opt) :
         super(FixCommand, self).__init__(opt, self.parameters, self.programs)
 
-        self.transcriptome = Transcriptome(opt, skip_checks=True)
+        self.transcriptome = Transcriptome(opt, allow_partial=True)
 
     def _run(self) :
         self.transcriptome.fix()
@@ -238,7 +243,7 @@ class PackCommand(Subcommand) :
     def __init__(self, opt) :
         super(PackCommand, self).__init__(opt, parameters=['species', 'release'])
 
-        self.transcriptome = Transcriptome(opt, skip_checks=True)
+        self.transcriptome = Transcriptome(opt, allow_partial=True)
 
     def _run(self) :
         return self.transcriptome.package()

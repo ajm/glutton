@@ -192,6 +192,7 @@ class Manifest(Base) :
                         break
 
                 except IOError, ioe : # no file to open
+                    self.overwrite("Progress", "validating alignments (%d / %d) done!" % (count, total), nl=True)
                     self.warn("alignment files missing for %s" % fname)
                     realign.append(fname)
                     break

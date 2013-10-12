@@ -20,7 +20,7 @@ class Transcriptome(Base) :
     file_prefix = 'paralog_'
     db_name = 'db'
 
-    def __init__(self, opt, skip_checks=False) :
+    def __init__(self, opt, allow_partial=False) :
         super(Transcriptome, self).__init__(opt)
 
         self.species = opt['species']
@@ -30,27 +30,30 @@ class Transcriptome(Base) :
 
         self.cancel = False
 
-        self.exonerate = ExonerateServer(self.opt, self.dir, self.db_name)
+        self._exonerate = None
         self.gene2file = None
 
-        self._init_manifest(skip_checks)
+        self.allow_partial = allow_partial
 
-    def _init_manifest(self, skip_validation) :
+        self._init_manifest()
+
+    @property
+    def exonerate(self):
+        if not self._exonerate :
+            self._exonerate = ExonerateServer(self.opt, self.dir, self.db_name)
+        
+        return self._exonerate
+
+    def _init_manifest(self) :
         try :
-            self.manifest = Manifest(self.opt, self.dir, self.file_prefix, self.db_name, skip_checks=skip_validation)
+            self.manifest = Manifest(self.opt, self.dir, self.file_prefix, self.db_name)
 
         except ManifestError, me :
             self.error(str(me))
             sys.exit(1)
 
-        if skip_validation and not self.manifest.is_complete() :
-            if self.force :
-                return
-
-            self.error("halting operation due to incomplete transcriptome database" + 
-                       "\n\t- use --force to continue anyway or ..." + 
-                       "\n\t- finish building the transcriptome with \"%s build -s '%s' -r %d\"" % \
-                               (sys.argv[0], self.species, self.release))
+        if not self.allow_partial and not self.manifest.is_complete() :
+            self.error("incomplete transcriptome database (rerun build command)")
             sys.exit(1)
 
         q = WorkQueue(self.opt, self.opt['threads'])
@@ -63,13 +66,6 @@ class Transcriptome(Base) :
                     fname
                 )
             )
-
-        # the build may seem complete, but there are alignments missing
-        #if self.manifest.is_complete() :
-        #    if self.manifest.realignments_required() :
-        #        self.warn("download appears to be complete, but realignments were required, " + \
-        #                  "waiting for these to finish before proceeding...")
-        #        q.join()
 
         q.join()
 
@@ -183,6 +179,10 @@ class Transcriptome(Base) :
         return "%s: %s-%d" % (type(self).__name__, self.species, self.release)
 
     def package(self) :
+        if not self.manifest.is_complete() and not self.force :
+            self.error("cannot package an incomplete transcriptome database (unless --force options is given)")
+            return 1
+
         outfile_name = "%s_%d.tgz" % (self.species, self.release)
         outfile_path = join(os.getcwd(), outfile_name)
 

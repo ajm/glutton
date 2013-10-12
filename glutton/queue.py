@@ -27,7 +27,7 @@ class WorkQueue(Base):
         self.no_more_jobs = False
         
         self.jobs_completed = 0
-        self.jobs_counter = itertools.count()
+        self.jobs_counter = itertools.count(start=1)
 
         self.start()
 
