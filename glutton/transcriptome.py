@@ -20,7 +20,7 @@ class Transcriptome(Base) :
     file_prefix = 'paralog_'
     db_name = 'db'
 
-    def __init__(self, opt, allow_partial=False) :
+    def __init__(self, opt, allow_partial=False, no_manifest=False) :
         super(Transcriptome, self).__init__(opt)
 
         self.species = opt['species']
@@ -35,7 +35,8 @@ class Transcriptome(Base) :
 
         self.allow_partial = allow_partial
 
-        self._init_manifest()
+        if not no_manifest :
+            self._init_manifest()
 
     @property
     def exonerate(self):

@@ -3,10 +3,13 @@ import os
 import subprocess
 import threading
 import tempfile
+import logging
+
 
 class Base(object) :
     print_lock = threading.Lock()
     safe_write_lock = threading.Lock()
+    log = None
 
     def __init__(self, opt) :
         self.opt = opt
@@ -14,6 +17,28 @@ class Base(object) :
         self.tmpdir = opt['tmpdir']
         self.verbose = opt.get('verbose', False)
         self.force = opt.get('force', False)
+
+        if not Base.log :
+            Base.log = self._setup_logging()
+
+        self.log = Base.log
+
+    def _setup_logging(self) :
+        log = logging.getLogger('glutton')
+        log.setLevel(logging.DEBUG)
+
+        fh = logging.FileHandler('glutton.log')
+        fh.setLevel(logging.DEBUG)
+        fh.setFormatter(logging.Formatter('%(levelname)s %(message)s'))
+
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.INFO if self.verbose else logging.WARNING)
+        ch.setFormatter(logging.Formatter('%(levelname)s %(message)s'))
+
+        log.addHandler(fh)
+        log.addHandler(ch)
+
+        return log
 
     def _check_dir(self, dirname, create=False) :
         if not os.path.exists(dirname) :
@@ -100,14 +125,20 @@ class Base(object) :
             #sys.stderr.flush()
             Base.print_lock.release()
 
+    def _wrap(self, s) :
+        return "%s %s" % (type(self).__name__, s)
+
     def info(self, s) :
-        self._p('Info', s)
+        self.log.info(self._wrap(s))
 
     def warn(self, s) :
-        self._p('Warn', s, print_anyway=True)
+        self.log.warn(self._wrap(s))
 
     def error(self, s) :
-        self._p('Error', s, print_anyway=True)
+        self.log.error(self._wrap(s))
+
+    def debug(self, s) :
+        self.log.debug(self._wrap(s))
 
     def progress(self, msg, percent) :
         self._p('Progress', "%s: %d%%\r" % (msg, int(percent)), newline=False, print_anyway=True)

@@ -269,8 +269,17 @@ class UnpackCommand(Subcommand) :
             self.error("package files must be called 'species_release.tgz'")
             sys.exit(1)
 
-        self.transcriptome = Transcriptome(self.opt)
+        self.transcriptome = Transcriptome(self.opt, no_manifest=True)
 
     def _run(self) :
         return self.transcriptome.unpackage(self.opt['input-file'])         
+
+class CheckCommand(Subcommand) :
+    def __init__(self, opt) :
+        super(CheckCommand, self).__init__(opt, parameters=[],
+                programs=['esd2esi','exonerate','exonerate-server','fasta2esd','fastareformat','pagan','prank'],
+                list_option=False)
+
+    def _run(self) :
+        return 0
 

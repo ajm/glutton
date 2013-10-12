@@ -39,7 +39,8 @@ commands = {
             'pack'      : glutton.subcommands.PackCommand,
             'unpack'    : glutton.subcommands.UnpackCommand,
             'rm'        : glutton.subcommands.RmCommand,
-            'scaffold'  : glutton.subcommands.ScaffoldCommand
+            'scaffold'  : glutton.subcommands.ScaffoldCommand,
+            'check'     : glutton.subcommands.CheckCommand
         }
 
 def get_default_options() :
