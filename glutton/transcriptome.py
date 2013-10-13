@@ -20,7 +20,7 @@ class Transcriptome(Base) :
     file_prefix = 'paralog_'
     db_name = 'db'
 
-    def __init__(self, opt, allow_partial=False, no_manifest=False) :
+    def __init__(self, opt, allow_partial=False) :
         super(Transcriptome, self).__init__(opt)
 
         self.species = opt['species']
@@ -35,8 +35,7 @@ class Transcriptome(Base) :
 
         self.allow_partial = allow_partial
 
-        if not no_manifest :
-            self._init_manifest()
+        self._init_manifest()
 
     @property
     def exonerate(self):
@@ -56,6 +55,9 @@ class Transcriptome(Base) :
         if not self.allow_partial and not self.manifest.is_complete() :
             self.error("incomplete transcriptome database (rerun build command)")
             sys.exit(1)
+
+        if not self.manifest.realignments_required() :
+            return
 
         q = WorkQueue(self.opt, self.opt['threads'])
 
@@ -120,7 +122,7 @@ class Transcriptome(Base) :
         self._build_exonerate_db()
         self.manifest.complete()
         
-        self.info("complete!")
+        self.info("done!")
 
     def fix(self) :
         if not self.manifest.is_complete() and not self.force :
@@ -130,7 +132,7 @@ class Transcriptome(Base) :
         self.info('rebuilding exonerate database...')
         self._build_exonerate_db()
 
-        self.info("complete!")
+        self.info("done!")
         return 0
 
     def query(self, query_fname) :
@@ -195,7 +197,7 @@ class Transcriptome(Base) :
                 outfile_path,
                 join(str(self.release), self.species)]
 
-        self.info("packing %s ..." % outfile_name)
+        self.overwrite("Packing", "%s ... " % outfile_name)
 
         try :
             subprocess.check_output(args, 
@@ -206,7 +208,7 @@ class Transcriptome(Base) :
             self.error(str(cpe))
             return 1
 
-        self.info("complete!")
+        self.overwrite("Packing", "%s done!" % outfile_name, nl=True)
         return 0
         
     def unpackage(self, package_name) :
@@ -217,7 +219,7 @@ class Transcriptome(Base) :
         args = ['tar', 'xf',
                 package_name]
 
-        self.info("unpacking %s ..." % basename(package_name))
+        self.overwrite("Unpacking", "%s ... " % basename(package_name))
 
         try :
             subprocess.check_output(args, 
@@ -228,6 +230,6 @@ class Transcriptome(Base) :
             self.error(str(cpe))
             return 1
 
-        self.info("complete!")
+        self.overwrite("Unpacking", "%s done!" % basename(package_name), nl=True)
         return 0
 

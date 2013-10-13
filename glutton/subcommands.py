@@ -19,6 +19,8 @@ class Subcommand(Base) :
     def __init__(self, options, parameters=[], programs=[], local=True, list_option=True) :
         super(Subcommand, self).__init__(options)
 
+        self.info("invoked " + time.ctime())
+
         self.parameters = parameters
         self.programs = programs
         self.local = local
@@ -114,7 +116,7 @@ class BuildCommand(Subcommand) :
         def _cleanup(signal, frame) :
             if not self.transcriptome.is_cancelled() :
                 self.transcriptome.stop()
-                self.warn("Application will shutdown after current download or user types '^C' again...")
+                self.warn("Application will terminate after current download or user types '^C' again...")
                 return
 
             self.warn("Forced exit from user")
@@ -136,7 +138,7 @@ class ListCommand(Subcommand) :
         return 0
 
 class AlignCommand(Subcommand) :
-    parameters = ['species', 'input-file', 'output-dir', 'min-length']
+    parameters = ['species', 'contig-file', 'alignment-dir', 'min-length']
     programs = ['pagan', 'exonerate-server', 'exonerate']
     
     def __init__(self, opt) :
@@ -151,9 +153,9 @@ class AlignCommand(Subcommand) :
         signal.signal(signal.SIGINT, _cleanup)
 
     def _run(self) :
-        self._check_dir(self.opt['output-dir'], create=True)
+        self._check_dir(self.opt['alignment-dir'], create=True)
 
-        qm = QueryManager(self.opt, self.opt['input-file'], self.opt['output-dir'], self.opt['min-length'])
+        qm = QueryManager(self.opt, self.opt['contig-file'], self.opt['alignment-dir'], self.opt['min-length'])
         total = qm.num_of_queries()
 
         q = WorkQueue(self.opt, self.opt['threads'])
@@ -165,7 +167,7 @@ class AlignCommand(Subcommand) :
                     self.opt,
                     transcriptome,
                     fname,
-                    self.opt['output-dir']
+                    self.opt['alignment-dir']
                 )
             )
 
@@ -192,7 +194,7 @@ class AlignCommand(Subcommand) :
         return 0
 
 class ScaffoldCommand(Subcommand) :
-    parameters = ['input-file', 'output-dir', 'min-identity', 'output-file']
+    parameters = ['contig-file', 'alignment-dir', 'min-identity', 'scaffold-file']
     programs = []
 
     def __init__(self, opt) :
@@ -200,9 +202,9 @@ class ScaffoldCommand(Subcommand) :
 
     def _run(self) :
         Scaffolder(self.opt).scaffold(
-                            self.opt['input-file'],
-                            self.opt['output-dir'],
-                            self.opt['output-file'],
+                            self.opt['contig-file'],
+                            self.opt['alignment-dir'],
+                            self.opt['scaffold-file'],
                             self.opt['min-identity'])
         return 0
 
@@ -250,11 +252,11 @@ class PackCommand(Subcommand) :
 
 class UnpackCommand(Subcommand) :
     def __init__(self, opt) :
-        super(UnpackCommand, self).__init__(opt, parameters=['input-file'], list_option=False)
+        super(UnpackCommand, self).__init__(opt, parameters=['package-file'], list_option=False)
         self._init()
 
     def _init(self) :
-        name,ext = os.path.splitext(os.path.basename(self.opt['input-file']))
+        name,ext = os.path.splitext(os.path.basename(self.opt['package-file']))
    
         if ext != '.tgz' :
             self.error("do not know how to deal with '%s' files" % ext)
@@ -269,10 +271,10 @@ class UnpackCommand(Subcommand) :
             self.error("package files must be called 'species_release.tgz'")
             sys.exit(1)
 
-        self.transcriptome = Transcriptome(self.opt, no_manifest=True)
+        self.transcriptome = Transcriptome(self.opt, allow_partial=True)
 
     def _run(self) :
-        return self.transcriptome.unpackage(self.opt['input-file'])         
+        return self.transcriptome.unpackage(self.opt['package-file'])
 
 class CheckCommand(Subcommand) :
     def __init__(self, opt) :
@@ -281,5 +283,6 @@ class CheckCommand(Subcommand) :
                 list_option=False)
 
     def _run(self) :
+        print "check: everything looks okay!"
         return 0
 

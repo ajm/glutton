@@ -66,9 +66,10 @@ def get_default_options() :
             'force'         : False,
             'min-length'    : 200,
             'min-identity'  : 0.95,
-            'output-file'   : 'scaffolds.fasta',
-            'input-file'    : None,
-            'output-dir'    : None,
+            'scaffold-file' : 'scaffolds.fasta',
+            'contig-file'   : None,
+            'alignment-dir' : os.path.join(os.getcwd(), 'alignments'),
+            'package-file'  : None,
            }
 
 def get_commands() :
@@ -147,21 +148,21 @@ Legal commands are %s (see below for options).
     -s      --species='species'     (no default, use --list for options with current database, MANDATORY)
     -r      --release='release'     (default = latest)
     -d      --database='db string'  (default = %s, valid arguments : %s)
-            --specify-db='db info'  ('db info' is comma separated host, port, username, password)
+            --specifydb='db info'   ('db info' is comma separated host, port, username, password)
 
 %s options:
     -l      --list                  (list downloaded species and release versions)
     -s      --species='species'     (no default, use --list for options locally available, MANDATORY)
     -r      --release='release'     (default = latest available locally)
-    -m      --min-length=NUM        (minimum length of contig to align, default = %d)
-    -i      --input-file='file'     (input file containing contigs, MANDATORY)
-    -o      --output-dir='dir'      (output directory, default = location of contig file)
+    -m      --minlength=NUM         (minimum length of contig to align, default = %d)
+    -i      --contigs='file'        (input file containing contigs, MANDATORY)
+    -a      --alignments='dir'      (output directory, default = %s)
 
 %s options:
-    -i      --input-file='file'     (input file containing contigs, MANDATORY)
-    -a      --align-dir='dir'       (output directory of 'align' command)
-            --min-identity=FLOAT    (threshold for using alignments, default = %.2f)
-            --output-file='file'    (output of scaffolder, default = %s)
+    -i      --contigs='file'        (input file containing contigs, MANDATORY)
+    -a      --alignments='dir'      (output directory of 'align' command)
+            --minidentity=FLOAT     (threshold for using alignments, default = %.2f)
+            --scaffolds='file'      (output of scaffolder, default = %s)
 
 %s options:
     -l      --list                  (list downloaded species and release versions)
@@ -169,7 +170,7 @@ Legal commands are %s (see below for options).
     -r      --release='release'     (no default, use --list for options locally available, MANDATORY)
 
 %s options:
-    -i      --input-file='file'     (no default, 'file' must come from the pack command)
+    -p      --package='file'        (no default, 'file' must come from the pack command)
 
 %s options:
     -l      --list                  (list downloaded species and release versions)
@@ -198,9 +199,10 @@ Legal commands are %s (see below for options).
         pretty(databases.keys()),
         bold('align'),
         options['min-length'],
+        options['alignment-dir'],
         bold('scaffold'),
         options['min-identity'],
-        options['output-file'],
+        options['scaffold-file'],
         bold('pack'),
         bold('unpack'),
         bold('rm'),
@@ -215,7 +217,6 @@ def expect_type(parameter, argument, this_type) :
 
     except ValueError, ve :
         print >> sys.stderr, "Error: parsing argument for %s: %s\n" % (parameter, str(ve))
-        usage()
         sys.exit(1)
 
 def expect_int(parameter, argument) :
@@ -246,28 +247,28 @@ def parse_args(argv) :
     try :
         opts,args = getopt.getopt(
                         argv,
-                        "s:ld:r:b:t:c:vhfm:i:o:a:",
+                        "ls:r:d:m:i:a:p:b:t:c:fvh",
                         [   
+                            "list",
                             "species=", 
-                            "species2=",
                             "release=",
+                            "database=",
+                            "specifydb=",
+                            "minlength=",
+                            "contigs=",
+                            "alignments=",
+                            "minidentity=",
+                            "scaffolds=",
+                            "package=",
+                            "prank=",
+                            "exonerate=",
+                            "pagan=",
                             "dbdir=",
                             "tmpdir=",
-                            "list",
-                            "verbose", 
-                            "help",
-                            "database=",
-                            "specify-db=",
-                            "prank=",
-                            "pagan=",
-                            "exonerate=",
                             "threads=",
                             "force",
-                            "min-length=",
-                            "input-file=",
-                            "output-dir=",
-                            "align-dir=",
-                            "min-identity="
+                            "verbose", 
+                            "help"
                         ]
                     )
 
@@ -301,20 +302,23 @@ def parse_args(argv) :
         elif o in ('-d', '--database') :
             options['database'] = a
 
-        elif o in ('--specify-db') :
+        elif o in ('--specifydb') :
             parse_database_string(a, options)
 
-        elif o in ('-m', '--min-length') :
+        elif o in ('-i', '--contigs') :
+            options['contig-file'] = expect_file('contigs', a)
+
+        elif o in ('-a', '--alignments') :
+            options['alignment-dir'] = a
+
+        elif o in ('--scaffolds') :
+            options['scaffold-file'] = a
+
+        elif o in ('-p', '--package') :
+            options['package-file'] = expect_file('package', a)
+
+        elif o in ('-m', '--minlength') :
             options['min-length'] = expect_int('min-length', a)
-
-        elif o in ('-i', '--input-file') :
-            options['input-file'] = expect_file('input-file', a)
-
-        elif o in ('-o', '--output-dir') :
-            options['output-dir'] = expect_dir('output-dir', a, should_exist=False)
-
-        elif o in ('-a', '--align-dir') :
-            options['output-dir'] = expect_dir('output-dir', a)
 
         elif o in ('--prank', '--pagan', '--exonerate') :
             program = o[2:]
@@ -330,13 +334,15 @@ def parse_args(argv) :
         elif o in ('-f', '--force') :
             options['force'] = True
 
-        elif o in ('--min-identity') :
-            tmp = expect_float('min-identity', a)
+        elif o in ('--minidentity') :
+            print o, a
+            tmp = expect_float('minidentity', a)
             if tmp < 0.0 or tmp > 1.0 :
                 print >> sys.stderr, "Error: min-identity must be in range 0.0 - 1.0\n"
                 sys.exit(1)
             
             options['min-identity'] = tmp
+
         else :
             assert False, "unhandled option %s" % o
 
@@ -348,9 +354,6 @@ def parse_args(argv) :
 
     if options['database'] != 'user-defined' :
         fill_in_database_info(options)
-
-    if options['input-file'] and not options['output-dir']:
-        options['output-dir'] = os.path.dirname(options['input-file'])
 
     return options
 

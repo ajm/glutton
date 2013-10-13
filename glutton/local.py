@@ -1,4 +1,5 @@
 import os
+import sys
 
 class LocalInfo(object) :
     def __init__(self, options) :
@@ -32,8 +33,8 @@ class LocalInfo(object) :
     def print_species_table(self) :
         
         if len(self.caches) == 0 :
-            print "no databases found in %s" % self.dbdir
-            return
+            print >> sys.stderr, "no databases found in %s" % self.dbdir
+            sys.exit(1)
 
         n_len = len(sorted(self.caches, key=len, reverse=True)[0]) + 2
         r_len = len("Release") + 2
