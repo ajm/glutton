@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Glutton homepage</title>
+        <link rel="stylesheet" href="style.css">
+    </head>
+    <body>
+        <header id="banner" class=body>
+        <h1>Glutton</h1>
+        <h2>Transcriptome Scaffolding using Evolutionary Alignment</h2>
+            <nav><ul>
+                <li><a href="#download">Download</a></li>
+                <li><a href="#usage">Usage</a></li>
+                <li><a href="#citation">Citation</a></li>
+            </ul></nav>
+        </header>
+
+        <article class="body">
+            <div id="rightimg">
+                <img src="media/gluttony_edit.png" alt="gluttony wood carving"><br />
+                <!-- <img id="secondimg" src="media/gluttony2_edit.png" alt="gluttony punishment wood carving"> -->
+            </div>
+            <div id="content">
+
+                <p>
+                Glutton is a pipeline for scaffolding <i>de-novo</i> assembilies from non-model organisms 
+                using evolutionary alignment to transcriptomes from public databases.
+                The current implementation utilises <a href="http://www.ensembl.org/info/genome/compara/homology_method.html">Ensembl Gene Trees</a>
+                to assign genes to gene families which are realigned with PRANK. These alignments are 
+                extended using contigs from a <i>de-novo</i> assembly using PAGAN, which can then be
+                merged into scaffolds.
+                </p>
+
+                <p>add more text</p>
+
+                <a name="download">
+                <h2>Download</h2>
+
+                <p><em>Prerequisites:</em> Glutton relies on the following software packages: Python 2.7.x, <a href="http://pycogent.org/install.html">PyCogent</a>, <a href="http://code.google.com/p/prank-msa/">PRANK</a>, <a href="http://code.google.com/p/pagan-msa/">PAGAN</a> and <a href="http://www.ebi.ac.uk/~guy/exonerate/">Exonerate</a>.</p>
+                <p><em>Source distribution:</em> insert link</p>
+                <p><em>Github:</em> <a href="http://github.com/ajm/glutton">latest version</a></p>
+
+            </div>
+
+
+            <div id="howto">
+                <a name="usage">
+                <h2>Usage</h2>
+    
+                <h3>Installation</h3>
+
+                <p>
+                After installing the necessary dependencies, 
+                download and untar the latest stable version of glutton:
+                </p>
+
+                <div class="code">
+                    <p>tar xf Glutton-0.1.tar.gz</p>
+                    <p>cd Glutton-0.1/</p>
+                </div>
+
+                <p>
+                Or clone the github repository:
+                </p>
+
+                <div class="code">
+                    <p>git clone https://github.com/ajm/glutton.git</p>
+                    <p>cd glutton/</p>
+                </div>
+
+                <p>
+                Glutton can be installed into your local site-packages directory using the setup.py script
+                or to somewhere else referenced in your PYTHONPATH.
+                To perform a system check to ensure glutton can see all necessary libraries and binaries,
+                change directory (to avoid python importing modules from the current directory) and use the 
+                'check' command:
+                </p>
+
+                <div class="code">
+                    <p>sudo python setup.py install</p>
+                    <p>cd</p>
+                    <p>glutton check</p>
+                </div>
+
+                <h3>Building a transcriptome database</h3>
+                
+                <p>
+                Glutton relies on transcriptome data from Ensembl Gene Trees which it stores locally. 
+                We provide a 'build' command that, by default, uses the public databases at EBI to download
+                all cDNA transcripts from all protein coding genes for a specified organism.
+                </p>
+
+                <p>
+                To see a list of available databases in Ensembl use the '--list' argument to the 'build'
+                command. In the following example we select Mouse. By default glutton will download
+                the latest version of the mouse transcriptome in gene families, but if we want to 
+                use a specific older version it can be specified with the '--release' argument:
+                </p>
+
+                <div class="code">
+                    <p>glutton build --list | less</p>
+                    <p>glutton build --species Mouse</p>
+                    <p>glutton build --species Mouse --release 71</p>
+                </div>
+
+                <p>
+                Additionally, we provide experimental support for databases in Ensembl Genomes, however, 
+                at the moment only metazoa works properly:
+                </p>
+
+                <div class="code">
+                    <p>glutton build --database 'ensembl-genomes' --list | less</p>
+                </div>
+
+                <h3>Managing transcriptome databases</h3>
+
+                <p>
+                Downloading and building a glutton database can take a lot of time and compute resources,
+                so for the most popular reference databases we provide pre-built packages. 
+                Pre-built packages are loaded using the 'unpack' command:
+                </p>
+
+                <div class="code">
+                    <p>glutton unpack --package Mouse_73.tgz</p>
+                    <p>glutton align --list</p>
+                </div>
+
+                <p>
+                In addition to pre-built packages, we provide a mechanism to allow others to build and 
+                distribute their own packages:
+                </p>
+
+                <div class="code">
+                    <p>glutton pack --list</p>
+                    <p>glutton pack --species Mouse --release 73</p>
+                    <p>ls Mouse_73.tgz</p>
+                </div>
+
+                <p>
+                To delete a database (perhaps an old version):
+                </p>
+
+                <div class="code">
+                    <p>glutton rm --species Mouse --release 72</p>
+                </div>
+
+                <h3>Evolutionary alignment and scaffolding</h3>
+                
+                <p>
+                Alignment of a set of contigs to a transcriptome database and the final scaffolding are two
+                separate commands. The 'align' command takes a long time and should be used with the
+                '--threads' argument to allow utilisation of multiple processors. If the Ensembl release
+                number is not specified 'align' uses the most recent database installed locally. 
+                Otherwise, a specific release installed locally can be used with the '--release' argument:
+                </p>
+
+                <div class="code">
+                    <p>glutton align --list</p>
+                    <p>glutton align --species Mouse --contigs contigs.fasta --alignments mouse_alignments --threads 4</p>
+                </div>
+
+                <p>
+                Scaffold unifies our alignments together with the original contigs and outputs everything in a
+                single fasta file. Contigs that were merged are replaced with a new version with names of the
+                form "&gt;contig_name1+contig_name2 (aligned to geneX)". You can specify a different scaffold
+                file name with the '--scaffold' argument:
+                </p>
+
+                <div class="code">
+                    <p>glutton scaffold --contigs contigs.fasta --alignments mouse_alignments --scaffolds mouse_73_scaffolds.fasta</p>
+                </div>
+
+<!--
+                <a name="download">
+                <h2>Download</h2>
+
+                <p><em>Prerequisites:</em> Glutton relies on the following software packages: <a href="http://code.google.com/p/prank-msa/">prank</a>, <a href="http://code.google.com/p/pagan-msa/">pagan</a> and <a href="http://www.ebi.ac.uk/~guy/exonerate/">exonerate</a>.</p>
+                <p><em>Source distribution:</em> insert link + image</p>
+                <p><em>Github:</em> <a href="http://github.com/ajm/glutton">latest version</a></p>
+-->
+                <a name="citation">
+                <h2>Citation</h2>
+                <p><em>pending</em></p>
+            </div>
+
+        </article>
+
+        <footer><p>add footer info</p></footer>
+    </body>
+</html>
+
