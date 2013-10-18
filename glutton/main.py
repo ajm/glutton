@@ -309,7 +309,7 @@ def parse_args(argv) :
             options['contig-file'] = expect_file('contigs', a)
 
         elif o in ('-a', '--alignments') :
-            options['alignment-dir'] = a
+            options['alignment-dir'] = expect_dir('alignments', a, should_exist=False)
 
         elif o in ('--scaffolds') :
             options['scaffold-file'] = a
