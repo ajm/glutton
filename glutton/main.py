@@ -14,6 +14,7 @@ except ImportError :
 
 import os
 import getopt
+import tempfile
 
 import glutton.subcommands
 
@@ -357,7 +358,7 @@ def parse_args(argv) :
 
     # change tmpdir just in case other commands are being run concurrently
     if options['tmpdir'] == os.environ.get('TMPDIR', '/tmp') :
-        options['tmpdir'] = tempfile.mkdtemp(prefix='glutton_', dir=opt['tmpdir'])
+        options['tmpdir'] = tempfile.mkdtemp(prefix='glutton_', dir=options['tmpdir'])
 
     return options
 
