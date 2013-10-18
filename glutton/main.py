@@ -355,6 +355,10 @@ def parse_args(argv) :
     if options['database'] != 'user-defined' :
         fill_in_database_info(options)
 
+    # change tmpdir just in case other commands are being run concurrently
+    if options['tmpdir'] == os.environ.get('TMPDIR', '/tmp') :
+        options['tmpdir'] = tempfile.mkdtemp(prefix='glutton_', dir=opt['tmpdir'])
+
     return options
 
 def main() :

@@ -16,9 +16,11 @@ class MergeError(Exception) :
 
 
 class AlignmentRange(object) :
-    def __init__(self, start, end, name, seq) :
+    def __init__(self, start, end, gene, identity, name, seq) :
         self.start = start
         self.end = end
+        self.gene = gene
+        self.identity = identity
         self.name = name
         self.seq = seq
 
@@ -210,7 +212,47 @@ class Scaffolder(Base) :
 
         return gene2range
 
+    # XXX creare a dictionary for contig names to AlignmentRanges, include gene 
+    #     as a field in AlignmentRange, only keep max %id and then reformat into
+    #     gene2range
     def __extract_alignment_ranges(self, alignment_dir, min_identity) :
+        contig2range = {}
+
+        for fn in self.__get_dna_alignments(alignment_dir) :
+            for query,reference in self.__get_queries(fn, allow_empty=False) :
+                start,stop,identity = self.__get_alignment_columns(query, reference)
+
+                if identity < min_identity :
+                    continue
+
+                ar = AlignmentRange(start, 
+                        stop, 
+                        reference.id, 
+                        identity,
+                        self.__munge_paganorfname(query.id), 
+                        ''.join([i for i in query.sequence if i != '-']))
+
+                if query.id not in contig2range :
+                    contig2range[query.id] = ar
+
+                elif contig2range[query.id].identity < identity :
+                    contig2range[query.id] = ar
+
+                else :
+                    pass # just ignore
+
+        # build gene-centric dict
+        gene2range = {}
+
+        for ar in contig2range.values() :
+            if ar.gene not in gene2range :
+                gene2range[ar.gene] = []
+
+            gene2range.append(ar)
+
+        return gene2range
+
+    def __extract_alignment_ranges_old(self, alignment_dir, min_identity) :
         gene2range = {}
 
         # find out what alignments overlap
@@ -225,7 +267,12 @@ class Scaffolder(Base) :
                     gene2range[reference.id] = []
 
                 gene2range[reference.id].append(\
-                        AlignmentRange(start, stop, self.__munge_paganorfname(query.id), ''.join([i for i in query.sequence if i != '-']))
+                        AlignmentRange(start, 
+                            stop, 
+                            reference.id, 
+                            identity, 
+                            self.__munge_paganorfname(query.id), 
+                            ''.join([i for i in query.sequence if i != '-']))
                         )
 
         return gene2range
