@@ -14,9 +14,9 @@ class Base(object) :
     def __init__(self, opt) :
         self.opt = opt
         self.dbdir = opt['dbdir']
-        self.tmpdir = opt['tmpdir']
         self.verbose = opt.get('verbose', False)
         self.force = opt.get('force', False)
+        self.tmpdir = tempfile.mkdtemp(suffix='glutton', dir=opt['tmpdir'])
 
         if not Base.log :
             Base.log = self._setup_logging()

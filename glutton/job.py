@@ -128,7 +128,7 @@ class PaganJob(Job) :
             self.info("aligning contig in '%s' against gene family in '%s'..." % (basename(self.fname), basename(root_fname)))
 
             if num_genes > 1 :
-                a_fname = root_fname + '.pep.2.fas'
+                a_fname = root_fname + '.nuc.2.fas'
                 t_fname = root_fname + '.2.dnd'
 
             p = Pagan(self.opt,
