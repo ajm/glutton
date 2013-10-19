@@ -46,7 +46,12 @@ class AlignmentRange(object) :
 
     def __merge_overlapping(self, other) :
         if other.seq in self.seq :
-            return AlignmentRange(self.start, self.end, self.__merge_name(other), self.seq)
+            return AlignmentRange(self.start, 
+                    self.end, 
+                    self.gene, 
+                    self.identity, 
+                    self.__merge_name(other), 
+                    self.seq)
 
         min_overlap = self.end - other.start
         max_overlap = len(other)
@@ -57,7 +62,12 @@ class AlignmentRange(object) :
 
         while overlap <= max_overlap :
             if seq1.endswith(seq2[:overlap]) :
-                return AlignmentRange(self.start, other.end, self.__merge_name(other), seq1 + seq2[overlap:])
+                return AlignmentRange(self.start, 
+                        other.end, 
+                        self.gene, 
+                        self.identity, 
+                        self.__merge_name(other), 
+                        seq1 + seq2[overlap:])
             
             overlap += 1
 
@@ -68,7 +78,12 @@ class AlignmentRange(object) :
         gap = other.start - self.end
         seq = self.seq + ("N" * gap) + other.seq
 
-        return AlignmentRange(self.start, other.end, self.__merge_name(other), seq)
+        return AlignmentRange(self.start, 
+                other.end, 
+                self.gene, 
+                self.identity, 
+                self.__merge_name(other), 
+                seq)
 
     # __add__ assumes that self is on the left and other is on the right
     #
