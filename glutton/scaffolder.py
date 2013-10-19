@@ -248,7 +248,7 @@ class Scaffolder(Base) :
             if ar.gene not in gene2range :
                 gene2range[ar.gene] = []
 
-            gene2range.append(ar)
+            gene2range[ar.gene].append(ar)
 
         return gene2range
 
