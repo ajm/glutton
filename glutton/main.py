@@ -336,10 +336,9 @@ def parse_args(argv) :
             options['force'] = True
 
         elif o in ('--minidentity') :
-            print o, a
             tmp = expect_float('minidentity', a)
             if tmp < 0.0 or tmp > 1.0 :
-                print >> sys.stderr, "Error: min-identity must be in range 0.0 - 1.0\n"
+                print >> sys.stderr, "Error: minidentity must be in range 0.0 - 1.0\n"
                 sys.exit(1)
             
             options['min-identity'] = tmp

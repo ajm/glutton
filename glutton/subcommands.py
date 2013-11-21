@@ -194,7 +194,7 @@ class AlignCommand(Subcommand) :
         return 0
 
 class ScaffoldCommand(Subcommand) :
-    parameters = ['contig-file', 'alignment-dir', 'min-identity', 'scaffold-file']
+    parameters = ['contig-file', 'alignment-dir', 'scaffold-file']
     programs = []
 
     def __init__(self, opt) :

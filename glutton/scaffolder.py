@@ -16,13 +16,15 @@ class MergeError(Exception) :
 
 
 class AlignmentRange(object) :
-    def __init__(self, start, end, gene, identity, name, seq) :
+    def __init__(self, start, end, gene, geneseq, identity, name, seq) :
         self.start = start
         self.end = end
         self.gene = gene
+        self.geneseq = geneseq
         self.identity = identity
-        self.name = name
+        self.names = [ name ] if isinstance(name, str) else name
         self.seq = seq
+        self.scaffolded = False
 
     # range subsumes 'other'
     def __contains__(self, other) :
@@ -42,13 +44,15 @@ class AlignmentRange(object) :
                 else (other.end >= self.start)
 
     def __merge_name(self, other) :
-        return "%s+%s" % (self.name, other.name)
+        #return "%s+%s" % (self.name, other.name)
+        return self.names + other.names
 
     def __merge_overlapping(self, other) :
         if other.seq in self.seq :
             return AlignmentRange(self.start, 
                     self.end, 
-                    self.gene, 
+                    self.gene,
+                    self.geneseq,
                     self.identity, 
                     self.__merge_name(other), 
                     self.seq)
@@ -65,6 +69,7 @@ class AlignmentRange(object) :
                 return AlignmentRange(self.start, 
                         other.end, 
                         self.gene, 
+                        self.geneseq,
                         self.identity, 
                         self.__merge_name(other), 
                         seq1 + seq2[overlap:])
@@ -76,11 +81,14 @@ class AlignmentRange(object) :
 
     def __merge_nonoverlapping(self, other) :
         gap = other.start - self.end
-        seq = self.seq + ("N" * gap) + other.seq
+        gapseq = self.geneseq[self.end:other.start].lower()
+        #seq = self.seq + ("N" * gap) + other.seq
+        seq = self.seq + gapseq + other.seq
 
         return AlignmentRange(self.start, 
                 other.end, 
                 self.gene, 
+                self.geneseq,
                 self.identity, 
                 self.__merge_name(other), 
                 seq)
@@ -104,8 +112,11 @@ class AlignmentRange(object) :
     def __len__(self) :
         return self.end - self.start
 
+    def __build_name(self) :
+        return "gene:%s contigs:%s scaffold:%s programs:trinity,pagan,glutton" % (self.gene, ','.join(self.names), "success" if self.scaffolded else "fail")
+
     def __str__(self) :
-        return ">%s\n%s" % (self.name, self.seq)
+        return ">%s\n%s" % (self.__build_name(), self.seq)
 
 
 class Scaffolder(Base) :
@@ -243,6 +254,7 @@ class Scaffolder(Base) :
                 ar = AlignmentRange(start, 
                         stop, 
                         reference.id, 
+                        ''.join([i for i in reference.sequence if i != '-']),
                         identity,
                         self.__munge_paganorfname(query.id), 
                         ''.join([i for i in query.sequence if i != '-']))
@@ -323,23 +335,33 @@ class Scaffolder(Base) :
         num_super_contigs = 0
 
         for gene in gene2range :
-            # __merge can deal with this easily because it is based on reduce
-            # however, I would prefer the stats to not include them
-            if len(gene2range[gene]) == 1 :
-                continue
+#            # __merge can deal with this easily because it is based on reduce
+#            # however, I would prefer the stats to not include them
+#            if len(gene2range[gene]) == 1 :
+#                continue
 
             merge = self.__merge(gene2range[gene])
-            
-            if merge :
-                merge.name += (" (aligned to %s)" % gene)
 
-                merged_contigs.update([ar.name for ar in gene2range[gene]])
+            if merge :
+                #merge.name += (" (aligned to %s, scaffold successful)" % gene)
+                merge.scaffolded = True
+
+                merged_contigs.update([ar.names[0] for ar in gene2range[gene]])
                 merged_versions.append(merge)
 
                 num_contigs += len(gene2range[gene])
                 num_super_contigs += 1
             else :
                 self.warn("conflict merging contigs aligned to %s" % gene)
+                
+                # should indicate where alignment succeeded, but scaffold failed
+                merged_contigs.update([ar.names[0] for ar in gene2range[gene]])
+                tmp = []
+                for ar in gene2range[gene] :
+                    #ar.name += ("(aligned to %s, scaffold failed)" % gene)
+                    tmp.append(ar)
+                merged_versions += tmp
+
 
         self.info("merged %d contigs into %d super-contigs" % (num_contigs, num_super_contigs))
 
