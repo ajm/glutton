@@ -3,3 +3,8 @@
 *swp
 MANIFEST
 dist
+*.fa
+*.fasta
+*.fq
+*.fastq
+

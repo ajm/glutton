@@ -321,9 +321,23 @@ class Scaffolder(Base) :
         fq.close()
         scaf.close()
 
+    def __output_intermediate_files(self, gene2range) :
+        for gene in gene2range :
+            f = open("intermediate_%s.fa" % gene, 'w')
+            
+            tmp = gene2range[gene][0]
+            print >> f, ">%s\n%s" % (tmp.gene, tmp.geneseq)
+
+            for ar in gene2range[gene] :
+                print >> f, ">%s\n%s" % (ar.names[0], ar.seq)
+
+            f.close()
+            self.log.info("created %s ..." % f.name)
+
     def scaffold(self, contig_filename, alignment_dir, output_filename, min_identity) :
         # extract alignment info
         gene2range = self.__extract_alignment_ranges(alignment_dir, min_identity)
+        self.__output_intermediate_files(gene2range)
         #gene2range = self.__fix_query_sequences(contig_filename, gene2range)
         num_contigs = sum([len(i) for i in gene2range.values()])
         self.info("found %d queries aligned to %d genes" % (num_contigs, len(gene2range)))
