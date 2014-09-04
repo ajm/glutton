@@ -1,16 +1,8 @@
-import sys
+from sys import stderr, argv, exit, version_info
 
-if sys.version_info < (2,7) :
-    print >> sys.stderr, "Sorry: requires python version 2.7 or greater (but not python 3.x)\n"
-    sys.exit(1)
-
-try :
-    import cogent
-    del cogent
-
-except ImportError :
-    print >> sys.stderr, "Error: pycogent is not installed! (tested with version 1.5.3)\n"
-    sys.exit(1)
+if version_info < (2,7) :
+    print >> stderr, "Sorry: requires python version 2.7 or greater (but not python 3.x)\n"
+    exit(1)
 
 import os
 import getopt
@@ -50,7 +42,7 @@ def get_default_options() :
             'species'       : None,
             'release'       : None,
             'list'          : None,
-            'dbdir'         : os.path.join(os.environ.get('HOME'), '.local/glutton'), #os.path.join(os.path.dirname(os.path.realpath(__file__)), 'cache'),
+            'dbdir'         : os.path.join(os.environ.get('HOME'), '.local/glutton'),
             'tmpdir'        : os.environ.get('TMPDIR', '/tmp'),
             'verbose'       : False,
             'db-host'       : None,
@@ -86,24 +78,24 @@ def fill_in_database_info(options) :
         options.update(databases[options['database']])
 
     except KeyError, ke :
-        print >> sys.stderr, "Error: '%s' is not a valid database string, valid strings are : %s" % \
+        print >> stderr, "Error: '%s' is not a valid database string, valid strings are : %s" % \
                 (options['database'], ' '.join(databases.keys()))
-        sys.exit(1)
+        exit(1)
 
 def parse_database_string(db_string, options) :
     db_fields = db_string.split(',')
 
     if len(db_fields) != 4 :
-        print >> sys.stderr, "Error: '%s' is an invalid database string, valid strings are in the form hostname,port,username,password" % db_string
-        sys.exit(1)
+        print >> stderr, "Error: '%s' is an invalid database string, valid strings are in the form hostname,port,username,password" % db_string
+        exit(1)
 
     # host, port, username, password
     try :
         db_fields[1] = int(db_fields[1])
 
     except ValueError, ve :
-        print >> sys.stderr, "Error: %s is not a valid port number" % db_fields[1]
-        sys.exit(1)
+        print >> stderr, "Error: %s is not a valid port number" % db_fields[1]
+        exit(1)
 
     options['db-host'] = db_fields[0]
     options['db-port'] = db_fields[1]
@@ -139,7 +131,7 @@ def usage() :
 
     options = get_default_options()
 
-    print >> sys.stderr, """Usage: %s command [OPTIONS]
+    print >> stderr, """Usage: %s command [OPTIONS]
 
 Legal commands are %s (see below for options).
 %s assumes that the following programs are installed: %s.
@@ -191,9 +183,9 @@ Legal commands are %s (see below for options).
     -v      --verbose
     -h      --help
 """ % (
-        sys.argv[0], 
+        argv[0], 
         pretty(get_commands()),
-        sys.argv[0],
+        argv[0],
         pretty(get_required_programs()),
         bold('build'),
         pretty([options['database']]),
@@ -217,8 +209,8 @@ def expect_type(parameter, argument, this_type) :
         return this_type(argument)
 
     except ValueError, ve :
-        print >> sys.stderr, "Error: parsing argument for %s: %s\n" % (parameter, str(ve))
-        sys.exit(1)
+        print >> stderr, "Error: parsing argument for %s: %s\n" % (parameter, str(ve))
+        exit(1)
 
 def expect_int(parameter, argument) :
     return expect_type(parameter, argument, int)
@@ -228,15 +220,15 @@ def expect_float(parameter, argument) :
 
 def expect_file(parameter, argument) :
     if not os.path.isfile(argument) :
-        print >> sys.stderr, "Error: file '%s' does not exist" % argument
-        sys.exit(1)
+        print >> stderr, "Error: file '%s' does not exist" % argument
+        exit(1)
 
     return os.path.abspath(argument)
 
 def expect_dir(parameter, argument, should_exist=True) :
     if should_exist and not os.path.isdir(argument) :
-        print >> sys.stderr, "Error: directory '%s' does not exist" % argument
-        sys.exit(1)
+        print >> stderr, "Error: directory '%s' does not exist" % argument
+        exit(1)
 
     return os.path.abspath(argument)
 
@@ -274,13 +266,13 @@ def parse_args(argv) :
                     )
 
     except getopt.GetoptError, err :
-        print >> sys.stderr, str(err) + " (see --help for more details)"
-        sys.exit(1)
+        print >> stderr, str(err) + " (see --help for more details)"
+        exit(1)
 
     for o,a in opts :
         if o in ('-h', '--help') :
             usage()
-            sys.exit(0)
+            exit(0)
 
         elif o in ('-v', '--verbose') :
             options['verbose'] = True
@@ -338,8 +330,8 @@ def parse_args(argv) :
         elif o in ('--minidentity') :
             tmp = expect_float('minidentity', a)
             if tmp < 0.0 or tmp > 1.0 :
-                print >> sys.stderr, "Error: minidentity must be in range 0.0 - 1.0\n"
-                sys.exit(1)
+                print >> stderr, "Error: minidentity must be in range 0.0 - 1.0\n"
+                exit(1)
             
             options['min-identity'] = tmp
 
@@ -348,9 +340,9 @@ def parse_args(argv) :
 
     
     if options['database'] not in databases :
-        print >> sys.stderr, "Error: %s is not a predefined database, valid options are: %s" % \
+        print >> stderr, "Error: %s is not a predefined database, valid options are: %s" % \
                 (quote(options['database']), list_sentence(quote_all(databases.keys())))
-        sys.exit(1)
+        exit(1)
 
     if options['database'] != 'user-defined' :
         fill_in_database_info(options)
@@ -365,24 +357,25 @@ def main() :
     global commands
 
     # a plaster over the command interface
-    if (len(sys.argv) < 2) or (sys.argv[1] in ('-h', '--help', 'help')) :
+    if (len(argv) < 2) or (argv[1] in ('-h', '--help', 'help')) :
         usage()
         return 0
 
-    options = parse_args(sys.argv[2:])
+    options = parse_args(argv[2:])
 
-    if sys.argv[1] in commands :
-        return commands[sys.argv[1]](options).run()
+    if argv[1] in commands :
+        return commands[argv[1]](options).run()
 
-    print >> sys.stderr, "Error: command %s not recognised, valid command are %s" % \
-            (pretty([sys.argv[1]]), pretty(get_commands()))
+    print >> stderr, "Error: command %s not recognised, valid command are %s" % \
+            (pretty([argv[1]]), pretty(get_commands()))
     
     return 1
 
 if __name__ == '__main__' :
     try :
-        sys.exit(main())
+        exit(main())
 
     except KeyboardInterrupt :
-        pass
+        print >> stderr, "Killed by user"
+        exit(1)
 

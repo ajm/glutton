@@ -1,230 +1,445 @@
-import sys
-import commands
+from sqlalchemy import create_engine
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.sql import text
+
+from time import time
+from sys import stderr, exit
+from collections import defaultdict
+
+import itertools 
 import re
 
-from cogent.db.ensembl import Species, Genome, Compara, HostAccount
-from cogent.db.ensembl.database import Database
 
-from glutton.base import Base
-from glutton.genefamily import GeneFamily
+DEBUG = True
 
-class EnsemblDbInfo(object) :
-    def __init__(self, db_name, low_release, high_release) :
-        self.db_name = db_name
-        self.latin_name = self._db2latin(self.db_name)
-        self.common_name = self._latin2common(self.latin_name)
-        self.low_release = low_release
-        self.high_release = high_release
-        self.release_str = "%d-%d" % (self.low_release, self.high_release)
+ensembl_sql_hosts = {
+            'ensembl' : {
+                    'username' : 'anonymous',
+                    'password' : '',
+                    'hostname' : 'ensembldb.ensembl.org',
+                    'port'     : 5306
+                },
+            'ensembl-genomes' : {
+                    'username' : 'anonymous',
+                    'password' : '',
+                    'hostname' : 'mysql.ebi.ac.uk',
+                    'port'     : 4157
+                }
+        }
 
-        #print "%s %s %s" % (self.db_name, self.latin_name, self.common_name)
-
-    def _db2latin(self, db_name) :
-        tmp = Species.getSpeciesName(db_name)
-        
-        if tmp != 'None' :
-            return tmp
-
-        return db_name.capitalize().replace('_', ' ')
-
-    def _latin2common(self, latin_name) :
-        try :
-            return Species.getCommonName(latin_name)
-        except :
-            pass
-
-        tokens = latin_name.lower().split()
-
-        if len(tokens) == 2 :
-            return tokens[0][0].capitalize() + "." + tokens[1]
-
-        raise Exception("Bad latin name: %s" % latin_name)
-
-    def table_str(self, latin_width, common_width, release_width) :
-        return self.latin_name.rjust(latin_width) + \
-               self.common_name.rjust(common_width) + \
-               self.release_str.rjust(release_width)
+def get_all_peptides_SQL(genome_db_id, release) : 
+    if release < 76 :
+        return """
+    SELECT m.member_id, m2.stable_id, s.sequence
+    FROM sequence s 
+    JOIN member m 
+        USING (sequence_id)
+    JOIN member m2 
+        ON m.gene_member_id=m2.member_id 
+    WHERE m.source_name="ENSEMBLPEP"
+        AND m.genome_db_id=%d""" % genome_db_id
+    else :
+        return """
+    SELECT gm.gene_member_id, gm.stable_id, s.sequence
+    FROM sequence s 
+    JOIN seq_member sm 
+        USING (sequence_id)
+    JOIN gene_member gm
+        USING (gene_member_id)
+    WHERE sm.source_name="ENSEMBLPEP"
+        AND gm.genome_db_id=%d""" % genome_db_id
     
-    def __str__(self) :
-        return "%s %s %s %s" % (self.latin_name, self.common_name, self.release_str, self.db_name)
+def get_all_homology_SQL(genome_db_id, release) :
+    if release < 76 :
+        return """
+    SELECT h.homology_id, h.description, GROUP_CONCAT(hm.peptide_member_id) as member_list 
+        FROM homology h 
+    JOIN homology_member hm 
+        USING (homology_id) 
+    JOIN method_link_species_set m 
+        ON h.method_link_species_set_id=m.method_link_species_set_id AND h.description="within_species_paralog" 
+    JOIN species_set s 
+        USING (species_set_id) 
+    WHERE s.genome_db_id=%d 
+    GROUP BY h.homology_id""" % genome_db_id
+    else :
+        return """
+    SELECT h.homology_id, h.description, GROUP_CONCAT(hm.gene_member_id) as member_list 
+        FROM homology h 
+    JOIN homology_member hm 
+        USING (homology_id) 
+    JOIN method_link_species_set m 
+        ON h.method_link_species_set_id=m.method_link_species_set_id AND h.description="within_species_paralog" 
+    JOIN species_set s 
+        USING (species_set_id) 
+    WHERE s.genome_db_id=%d 
+    GROUP BY h.homology_id""" % genome_db_id
 
-class EnsemblInfo(object) :
-    def __init__(self, options) :
-        self.db_host = options['db-host']
-        self.db_port = options['db-port']
-        self.db_user = options['db-user']
-        self.db_pass = options['db-pass']
 
-        self.verbose = options['verbose']
+# need to include '' as a wildcard
+def invalid_ensembl_db(name) :
+    return name not in ['', 'ensembl', 'metazoa', 'bacteria', 'fungi', 'protists', 'plants']
 
-        self.databases = self._get_databases()
 
-    def _convert_to_range(self, releases) :
-        releases.sort()
-        return "%d-%d" % (releases[0], releases[-1])
+class SpeciesNotFoundError(Exception) :
+    def __init__(self, s) :
+        super(SpeciesNotFoundError, self).__init__(s)
 
-    def _get_databases(self) :
-        passwd = "" if self.db_pass == "" else "-p %s" % self.db_pass
-        showdb = "mysql -h %s -u %s -P %d %s -B -e 'SHOW DATABASES;'" % (self.db_host, self.db_user, self.db_port, passwd)
+class ReleaseNotFoundError(Exception) :
+    def __init__(self, s) :
+        super(ReleaseNotFoundError, self).__init__(s)
 
-        stat,output = commands.getstatusoutput(showdb)
+class SQLQueryError(Exception) :
+    def __init__(self, s) :
+        super(SQLQueryError, self).__init__(s)
 
-        if stat != 0 :
-            print >> sys.stderr, "Error: could not run \"%s\"" % showdb
-            sys.exit(1)
 
-        dbpat = re.compile("^(.*)_core_(\d+_)?(\d+)_.+")
-        db2rel = {}
+def make_connection(user, password, host, port, db="", echo=False) :
+    e = create_engine('mysql://%s:%s@%s:%d/%s' % (user, password, host, port, db), echo=echo)
+    return e.connect()
 
-        for dbdesc in output.split('\n') :
-            if "core" in dbdesc : 
-                m = dbpat.match(dbdesc)
-                if (m != None) and (len(m.groups()) == 3) :
-                    dbname,chaff,dbrel = m.groups()
-                    if dbname not in db2rel :
-                        db2rel[dbname] = []
-                    if chaff is None :
-                        db2rel[dbname].append(int(dbrel))
-                    else :
-                        # in the case of the ensembl-metazoa species
-                        db2rel[dbname].append(int(chaff[:-1]))
+def make_connection_dict(d, db="", echo=False) :
+    return make_connection(d['username'], d['password'], d['hostname'], d['port'], db, echo)
 
-        databases = {}
+# transform a list of integers into a 'range string'
+# e.g. [1,2,3,5,6,8] -> "1-3,5-6,8"
+def list2rangestr(l) :
+    numbers = sorted(l)
+    ranges = []
 
-        for dbname in db2rel :
-            try :
-                databases[dbname] = EnsemblDbInfo(dbname, min(db2rel[dbname]), max(db2rel[dbname]))
-                
-                # add to pycogent as well
-                if Species.getSpeciesName(databases[dbname].latin_name) == 'None' :
-                    if self.verbose :
-                        print >> sys.stderr, "Info: adding '%s' to pycogent" % databases[dbname].latin_name
-                    Species.amendSpecies(databases[dbname].latin_name, databases[dbname].common_name)
-                    
-                    #print >> sys.stderr, "\t" + Species.getCommonName(databases[dbname].latin_name)
-                    #print >> sys.stderr, "\t" + Species.getEnsemblDbPrefix(databases[dbname].latin_name)
-            except :
-                if self.verbose :
-                    print >> sys.stderr, "Info: rejected '%s'" % dbname
+    begin = last = numbers.pop(0)
+    
+    while numbers :
+        current = numbers.pop(0)
 
-        return databases
+        if (current - 1) != last :
+            ranges.append((begin, last))
+            begin = current 
+
+        last = current
+    
+    ranges.append((begin, last))
+
+    return ','.join(["%d" % r1 if r1 == r2 else "%d-%d" % (r1, r2) for r1,r2 in ranges])
+
+# transform a 'range string', i.e. a string of the form "X-Y,Z,A-B,"
+# into a list of integers in ascending order
+# intervals X-Y are assumed to be inclusive
+def rangestr2list(rangestr) :
+    return sorted(itertools.chain.from_iterable([ 
+                    range(*[int(j)+ind for ind,j in enumerate(i.split('-'))]) 
+                        if '-' in i else [int(i)] 
+                            for i in rangestr.split(',') ]
+                ))
+
+# get all versions of the compara database at the db hosts
+# listed in ensembl_sql_hosts
+def get_compara_versions() :
+    global ensembl_sql_hosts
+    
+    version_table = defaultdict(list)
+    db_table = {}
+
+    for hostkey in ensembl_sql_hosts :
+        c = make_connection_dict(ensembl_sql_hosts[hostkey])
+
+        result = c.execute(text('show databases'))
+
+        for r in result :
+            db_name = r[0]
+
+            is_compara = re.match("ensembl_compara_(\d+)|ensembl_compara_(\w+)_(\d+)_(\d+)", db_name)
+
+            if is_compara :
+                compara = is_compara.groups()
+                if compara[0] :
+                    name = 'ensembl'
+                    version = int(compara[0])
+                else :
+                    name = compara[1]
+                    version = int(compara[2])
+
+                # i have no idea what pan_homology is...
+                if name != 'pan_homology' :
+                    version_table[name].append(version)
+                    db_table[(name, version)] = (hostkey, db_name)
+
+    for i in version_table :
+        version_table[i] = list2rangestr(version_table[i])
+
+    return version_table, db_table
+
+# get all species listed in a specific database, db_name
+# e.g. ('ensembl-genomes', 'ensembl_compara_metazoa_19_75')
+def get_compara_species(db_host, db_name) :
+    global ensembl_sql_hosts
+
+    species_table = {}
+    c = make_connection_dict(ensembl_sql_hosts[db_host], db_name)
+
+    result = c.execute(text("select genome_db_id, name, assembly, genebuild from genome_db"))
+
+    for r in result :
+        genome_db_id,name,assembly,genebuild = r
+        species_table[name] = (genome_db_id, assembly, genebuild)
+
+    result.close()
+
+    return species_table
+
+# return dictionary of species name -> range string
+# parameter db_name can be used to limit the enumeration to
+# e.g. 'metazoa'
+def get_species_versions(db_name="", species=None, human_readable=True) :
+    
+    if invalid_ensembl_db(db_name) :
+        raise BadEnsemblDBNameError("%s not a valid name" % db_name)
+    
+    version_table, db_table = get_compara_versions()
+    species_version_table = defaultdict(list)
+
+    for db in sorted(db_table, key=lambda x : x[1], reverse=True) :
+        if not db[0].startswith(db_name) :
+            continue
+
+        species_table = get_compara_species(*db_table[db])
+
+        if species :
+            if species in species_table :
+                db_name = db[0] # this will speed up searches for specific species
+                species_version_table[species].append(db[1])
+        else :
+            for s in species_table :
+                species_version_table[s].append(db[1])
+
+    if human_readable :
+        for i in species_version_table :
+            species_version_table[i] = list2rangestr(species_version_table[i])
+
+    return dict(species_version_table)
+
+def test_species_listing() :
+    version_table, db_table = get_compara_versions()
+
+    for db in db_table :
+        try :
+            print "trying %s %d -" % db,
+            species_table = get_compara_species(*db_table[db])
+            print "got %d species" % len(species_table)
+        except :
+            print "error"
+
+# find out what the version of the compara database is called
+# for this species and release number
+#
+# returns a 3-tuple
+#   genome_db_id - internal species identity in this version of ensembl
+#   db_host - key into ensembl_sql_hosts specifying connection information
+#   db_name - name of database table to read in compara for this species + release
+def find_database_for_species(species, release) :
+    version_table, db_table = get_compara_versions()
+
+    for db in [ (name,version) for name,version in db_table if version == release ] :
+        species_table = get_compara_species(*db_table[db])
+
+        if species in species_table :
+            db_host, db_name = db_table[db]
+            return species_table[species][0], db_host, db_name
+
+    raise ReleaseNotFoundError("could not find release %d for %s" % (release, species))
+
+def perform_query(connection, query) :
+    try :
+        return connection.execute(text(query)).fetchall()
+
+    except SQLAlchemyError, sae :
+        raise SQLQueryError(str(sae))
+
+def group_into_families(peptides, homologies) :
+    seen = set()
+    all_families = []
+
+    for pep in peptides :
+        if pep in seen :
+            continue
+
+        fam = []
+
+        if homologies[pep] :
+            for pepid in homologies[pep] :
+                fam.append(peptides[pepid])
+                seen.add(pepid)
+        else :
+            fam.append(peptides[pep])
+
+        all_families.append(fam)
+
+    return all_families
+
+def get_canonical_peptide_sequences(connection, species, release, genome_db_id) :
+    # get a complete listing of canonical peptides for species
+    raw_results = perform_query(connection, get_all_peptides_SQL(genome_db_id, release))
+
+    id2peptide = dict([ (r[0], (r[1], r[2])) for r in raw_results ])
+    
+    if DEBUG :
+        with open("%s_%d_pep_raw.txt" % (species, release), 'w') as f :
+            for r in raw_results :
+                print >> f, r
+
+    return id2peptide
+
+def get_homology_information(connection, species, release, genome_db_id) :
+    # get homology information about peptide sequences 
+    raw_results = perform_query(connection, get_all_homology_SQL(genome_db_id, release))
+
+    homologies = defaultdict(set)
+
+    for r in raw_results :
+        x,y = [ int(i) for i in r[2].split(',') ]
+        homologies[x].add(x)
+        homologies[y].add(y)
+        homologies[x].add(y)
+        homologies[y].add(x)
+
+    if DEBUG :
+        with open("%s_%d_homology_raw.txt" % (species, release), 'w') as f :
+            for r in raw_results :
+                print >> f, r
+
+    return homologies
+
+def get_latest_release(species) :
+    try :
+        return max(get_species_versions(species=species, human_readable=False)[species])
+
+    except KeyError :
+        raise SpeciesNotFoundError("%s not found in any ensembl database" % species)
+
+# download a listing of the canonical peptides and homology relations
+# for within_species_paralogs
+# e.g. tribolium_castineum, 75
+def download_database(species, release=None) :
+    global ensembl_sql_hosts
+    global DEBUG
+
+    # if release is not specified we need to find the latest release
+    if not release :
+        if DEBUG :
+            print >> stderr, "release not specified, finding latest version..."
+
+        release = get_latest_release(species)
+
+    if DEBUG :
+        print >> stderr, "downloading %s/%d -" % (species, release),
+
+    genome_db_id, db_host, db_name = find_database_for_species(species, release)
+
+    connection = make_connection_dict(ensembl_sql_hosts[db_host], db_name)
+
+    # a user would want to use the ensembl-genomes release number which differs
+    # by 53 compared to the ensembl main version number, so increase it here to 
+    # allow the correct query for the appropriate db schema 
+    if db_host == 'ensembl-genomes' :
+        release += 53
+
+    id2peptide = get_canonical_peptide_sequences(connection, species, release, genome_db_id)
+    homologies = get_homology_information(connection, species, release, genome_db_id)
+
+    return group_into_families(id2peptide, homologies)
+
+def test_download_database(species) :
+    for release in rangestr2list('15-23') :
+        download_database(species, release)
+
+
+class EnsemblDownloader(object) :
+    def __init__(self) :
+        pass
+
+    # i should really just assume everything is valid in the calling code and 
+    # throw exceptions based on specific errors, i.e. bad species, bad release, etc
+    def is_valid_species (self, species, release=None) :
+        try :
+            releases = get_species_versions(species=species, human_readable=False)[species]
+        except KeyError :
+            return False
+
+        if release :
+            return release in releases
+
+        return True
 
     def get_latest_release(self, species) :
-        try :
-            return self.databases.get(Species.getEnsemblDbPrefix(species)).high_release
-        except :
-            return -1
+        return get_latest_release(species)
 
-    def _calc_rjust(self, title, variable) :
-        return len(sorted([title] + map(lambda x: getattr(x, variable), self.databases.values()), key=len, reverse=True)[0]) + 2
+    def get_all_species(self, db="") :
+        return sorted(get_species_versions(db).items())
 
-    def print_species_table(self) :
-        l_len = self._calc_rjust("Name", "latin_name")
-        c_len = self._calc_rjust("Common name", "common_name")
-        r_len = self._calc_rjust("Releases", "release_str")
+    def user_database(self, db_name, host, port, user, passwd) :
+        global ensembl_sql_hosts
 
-        print ""
-        print "Name".rjust(l_len) + "Common Name".rjust(c_len) + "Releases".rjust(r_len)
-        print "-" * (l_len + c_len + r_len)
+        ensembl_sql_hosts.clear()
 
-        for name in Species.getSpeciesNames() :
-            try :
-                print self.databases[Species.getEnsemblDbPrefix(name)].table_str(l_len, c_len, r_len)
-            except KeyError, ke :
-                pass
+        ensembl_sql_hosts[db_name]['username'] = user
+        ensembl_sql_hosts[db_name]['password'] = passwd
+        ensembl_sql_hosts[db_name]['hostname'] = host
+        ensembl_sql_hosts[db_name]['port'] = port
 
-    def is_valid_species(self, species) :
-        try :
-            return self.databases.has_key(Species.getEnsemblDbPrefix(species))
-        except :
-            return False
+    #def add_glutton_ids(self, families) :
+    #    return dict(zip(( "glutton%d" % i for i in xrange(len(families)) ), families))
 
-    def is_valid_release(self, species, release) :
-        if not self.is_valid_species(species) :
-            return False
-
-        tmp = self.databases[Species.getEnsemblDbPrefix(species)]
-
-        return (release >= tmp.low_release) and (release <= tmp.high_release)
-
-class EnsemblDownloader(Base) :
-    def __init__(self, opt) :
-        super(EnsemblDownloader, self).__init__(opt)
-        
-        self.species = opt['species']
-        self.release = opt['release']
-        self.account = HostAccount(
-                            opt['db-host'], 
-                            opt['db-user'], 
-                            opt['db-pass'], 
-                            port=opt['db-port']
-                         )
-        self.database = opt['database']
-        self.genes = set()
-
-    def set_already_downloaded(self, genes) :
-        self.genes.update(genes)
-
-    def __iter__(self) :
-        return self.genefamilies()
-
-    def genefamilies(self) :
-        genome = Genome(self.species, Release=self.release, account=self.account)
-        compara = Compara([self.species], Release=self.release, account=self.account)
-
-        self.warn("current version only works with species in ensembl and ensembl-metazoa")
-
-        # DON'T TRY THIS AT HOME!
-        #
-        # what happens is it searches for compara databases, but unfortunately finds more than one
-        # in this situation pycogent just connects to the first one, which is always compara_bacteria
-        # so one solution is to dig through all the compara objects internals to provide a connection
-        # to the correct database ... obviously not the best solution, but at 6 lines of code definitely 
-        # the shortest ;-P
-        #
-        if self.database == 'ensembl-genomes' :
-            from cogent.db.ensembl.host import DbConnection
-            from cogent.db.ensembl.name import EnsemblDbName
-            import sqlalchemy
-
-            new_db_name = EnsemblDbName(compara.ComparaDb.db_name.Name.replace('bacteria', 'metazoa'))
-            compara.ComparaDb._db = DbConnection(account=self.account, db_name=new_db_name)
-            compara.ComparaDb._meta = sqlalchemy.MetaData(compara.ComparaDb._db)
-        # end of DON'T TRY THIS AT HOME!
-
-        for gene in genome.getGenesMatching(BioType='protein_coding') :
-            stableid = gene.StableId.lower()
-
-            # ignore genes that have already been seen as members of
-            # gene families
-            if stableid in self.genes :
-                self.info("skipping %s (already downloaded)" % stableid)
-                continue
-
-            self.genes.add(stableid)
-
-            # get cds sequences of any paralogs
-            paralogs = compara.getRelatedGenes(StableId=stableid, Relationship='within_species_paralog')
+    # returns peptide sequences + homologies
+    def download(self, species, release=None) :
+        return download_database(species, release)
 
 
-            gf = GeneFamily()
+if __name__ == '__main__' :
+    e = EnsemblDownloader()
 
-            if paralogs is None :
-                gf[stableid] = gene.getLongestCdsTranscript().Cds
-            else :
-                for paralog in paralogs.Members :
-                    paralog_id = paralog.StableId.lower()
-                    self.genes.add(paralog_id)
-                    try :
-                        gf[paralog_id] = paralog.getLongestCdsTranscript().Cds
-                    except AttributeError:
+    for i in e.get_all_species(db='ensembl') :
+        print i
 
-                        self.error("show stopping bug: calling getLongestCdsTranscript() on %s returns %s" % (paralog_id, paralog.getLongestCdsTranscript()))
-                        
-                        import os
-                        os._exit(1)
+    families = e.download('tribolium_castaneum')
 
-            self.info("%s (%d gene%s in family)" % (stableid, len(gf), "s" if len(gf) > 1 else ""))
 
-            yield gf
+#version_table, db_table = get_compara_versions()
+#print version_table
+
+#test_download_database('tribolium_castaneum')
+#exit(0)
+
+
+# get all versions of ensembl + release numbers
+#
+# version_table is dict for printing (human readable) release numbers
+#   key can be 'ensembl', 'metazoa', 'fungi', 'plants', 'bacteria'
+#   value is range string in the form 'X-Y,A,B-C'
+#
+# db_table maps a 2-tuple of (key, release) to the host + database name
+#   key can be 'ensembl', 'metazoa', 'fungi', 'plants', 'bacteria'
+#version_table, db_table = get_compara_versions()
+#print version_table
+
+# get all species in version 76 of ensembl metazoa
+# 
+# species_table is a dict 
+#   key = species name
+#   value = (genome_db_id, assembly, genebuild)
+#species_table = get_compara_species(*db_table[('metazoa', 76)])
+#print species_table
+
+# get all species + release range strings from specified database - all releases
+# returns dict 
+#   key = species name
+#   value = range string of releases
+#
+# XXX may not that useful because there is so much crap in the early releases...
+#       but can do get_species_versions('metazoa')['tribolium_castaneum'] to get all releases
+#species_table = get_species_versions('metazoa')
+#print species_table
+
+# download species database for a given release
+# XXX still working on...
+#download_database('tribolium_castaneum', 76)
 
