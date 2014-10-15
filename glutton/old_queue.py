@@ -4,44 +4,24 @@ import Queue
 import time
 import itertools
 
+from multiprocessing import cpu_count
+
 from glutton.job import Job, JobError
-from glutton.utils import get_log, num_threads
+from glutton.base import Base
 
-
-def _order_key(k) :
-    if isinstance(k, list) :
-        return sum([ len(i) for i in k ])
-    else :
-        return len(k)
-
-# maybe this is the wrong way to do this now...
-#
-# the queue used to be
-# drip fed with jobs from a caller whose responsibility it was to create 
-# and delete files for the job, now the input is stored in memory and the
-# output read in a callback function that the caller provides, allowing 
-# the super class Job object to delete both the input and output files
-# simplifying all the calling code
-#
-# long running jobs should be given first, so
-# sort the input by total length of input sequence as a heuristic
-def order_jobs(x) :
-    x.sort(key=_order_key, reverse=True)
-    return x
 
 class WorkQueueError(Exception) :
     pass
 
-class WorkQueue(object):
-    def __init__(self, qtimeout=1, maxsize=0):
+class WorkQueue(Base):
+    def __init__(self, opt, numworkers, qtimeout=1, maxsize=0):
+        super(WorkQueue, self).__init__(opt)
 
         if maxsize == 0 :
-            maxsize = num_threads() * 2
-
-        self.log = get_log()
+            maxsize = numworkers * 10
 
         self.q = Queue.Queue(maxsize)
-        self.workers = self._init_workers(num_threads())
+        self.workers = self._init_workers(numworkers)
         self.q_timeout = qtimeout
         self.running = False
         self.no_more_jobs = False
@@ -54,14 +34,14 @@ class WorkQueue(object):
     def __del__(self) :
         self.stop()
 
-#    def _introspect_cores(self) :
-#        return cpu_count()
+    def _introspect_cores(self) :
+        return cpu_count()
 
     def _init_workers(self, numworkers):
-#        if numworkers == 0 :
-#            numworkers = self._introspect_cores()
+        if numworkers == 0 :
+            numworkers = self._introspect_cores()
 
-        self.log.info("queue using %d thread%s" % (numworkers, "" if numworkers == 1 else "s"))
+        self.info("using %d thread%s" % (numworkers, "" if numworkers == 1 else "s"))
 
         tmp = []
 
@@ -78,17 +58,17 @@ class WorkQueue(object):
         for t in self.workers:
             t.start()
     
-        self.log.debug("queue started")
+        self.info("started")
 
     # block until the currently running jobs complete
     def stop(self):
-        self.log.debug("queue stopping...")
+        self.info("stopping...")
         self.running = False
         
         for t in self.workers:
             t.join()
     
-        self.log.debug("queue stopped")
+        self.info("stopped")
 
     def join(self) :
         # calling join causes the calling thread to try and 
@@ -113,10 +93,10 @@ class WorkQueue(object):
         for t in self.workers :
             t.join()
 
-        self.log.debug("queue drained")
+        self.info("done")
 
     def enqueue(self, j):
-        self.log.debug("enqueuing %s" % str(j))
+        self.info("enqueuing %s" % str(j))
         
         assert isinstance(j, Job)
 
@@ -135,19 +115,19 @@ class WorkQueue(object):
             
             except Queue.Empty, qe:
                 if self.no_more_jobs :
-                    self.log.debug("no more jobs, exiting...")
+                    self.info("no more jobs, exiting...")
                     break
 
                 continue
 
-            self.log.debug("starting %s" % str(work))
+            self.info("starting %s" % str(work))
             work.run()
 
-            self.log.debug("completed %s %s" % (str(work), work.state_str()))
+            self.info("completed %s %s" % (str(work), work.state_str()))
             self.q.task_done()
             self.jobs_completed = self.jobs_counter.next()
 
             if work.terminated() :
-                self.log.warn("job terminated, thread exiting...")
+                self.warn("job terminated, thread exiting...")
                 break
 

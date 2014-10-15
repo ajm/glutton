@@ -10,8 +10,7 @@ timefmt = '%Y-%m-%dT%H:%M:%S'
 
 
 class GluttonTypeNotSupportedError(Exception) :
-    def __init__(self, msg) :
-        super(Exception, self).__init__(msg)
+    pass
 
 class GluttonXMLManifestHandler(ContentHandler) :
     def __init__(self) :
@@ -30,14 +29,14 @@ class GluttonXMLManifestHandler(ContentHandler) :
     def _convert(self, content, t) :
         global timefmt
 
-        if t == 'str' :
+        if t == 'str' or t == 'unicode':
             return content
         elif t == 'int' :
             return int(content)
         elif t == 'float' :
             return float(content)
         elif t == 'bool' :
-            return bool(content)
+            return content == 'True'
         elif t == 'datetime' :
             return datetime.datetime.strptime(content, timefmt)
 
@@ -76,6 +75,47 @@ class GluttonXMLManifest(object) :
             writer.endElement(m)
 
         writer.endElement('manifest')
+        writer.endDocument()
+
+        f.flush()
+
+class GluttonXMLMappingHandler(ContentHandler) :
+    def __init__(self) :
+        self.mapping = {}
+
+    def startElement(self, name, attrs) :
+        if name == 'mapping' :
+            self.current_key = attrs['id']
+
+    def characters(self, content) :
+        self.current_value = content
+
+    def endElement(self, name) :
+        if name == 'mapping' :
+            self.mapping[self.current_key] = self.current_value
+
+class GluttonXMLMapping(object) :
+
+    def read(self, f) :
+        self.parser = make_parser()
+        self.parser.setContentHandler(GluttonXMLMappingHandler())
+
+        self.parser.parse(f)
+
+        return self.parser.getContentHandler().mapping
+
+    def write(self, f, mapping) :
+        writer = XMLGenerator(f, 'utf-8')
+
+        writer.startDocument()
+        writer.startElement('mappings', {})
+
+        for m in mapping :
+            writer.startElement('mapping', { 'id' : m })
+            writer.characters(mapping[m])
+            writer.endElement('mapping')
+
+        writer.endElement('mappings')
         writer.endDocument()
 
         f.flush()
@@ -156,7 +196,7 @@ if __name__ == '__main__' :
     metadata = {
             'glutton-version'   : glutton.__version__,
             'program-name'      : 'PRANK',
-            'program-version'   : 1.1,
+            'program-version'   : 'v1.1',
             'species-name'      : 'tribolium_castaneum',
             'species-release'   : 23,
             'download-time'     : datetime.datetime.today(),

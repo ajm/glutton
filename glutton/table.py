@@ -21,6 +21,7 @@ def pretty_print_table(headings, data) :
 
     # print the actual table
     s = fmt % tuple(headings)
+    print ""
     print s
     print '-'*len(s)
 

@@ -1,31 +1,32 @@
-import os
+from glutton.base import ExternalTool
 
-from glutton.base import ToolBase
+class Pagan(ExternalTool) :
+    def __init__(self) :
+        super(Pagan, self).__init__()
 
-class Pagan(ToolBase) :
-    def __init__(self, opt, alignment_file, tree_file, query_file, out_dir) :
-        super(Pagan, self).__init__(opt)
+    @property
+    def version(self) :
+        returncode, output = self._execute(["--version"], [], [])
 
-        self.alignment_file = alignment_file
-        self.tree_file = tree_file
-        self.query_file = query_file
-        self.out_file = os.path.join(out_dir, os.path.basename(query_file))
+        for line in output.split('\n') :
+            if line.startswith('This is PAGAN') :
+                v = line.strip().split()[-1]
+                return v[:-1]
 
-    def output_filenames(self) :
-        return []
+        raise ExternalToolError('could get version of pagan')
 
-#        ext = ['.fas','.dna.fas']
-#        
-#        if self.tree_file :
-#            ext.append('.tre')
-#
-#        return [self.out_file + e for e in ext]
+    @property
+    def alignment(self) :
+        return self.alignment_fname
 
-    def run(self) :
+    def output_filenames(self, outfile) :
+        return [ outfile + i for i in ('.codon.fas', '.fas', '') ]
+
+    def run(self, queries_fname, out_fname, alignment_fname, tree_fname=None) :
         parameters = [
-                      "--ref-seqfile",  self.alignment_file,
-                      "--queryfile",    self.query_file,
-                      "--outfile",      self.out_file,
+                      "--ref-seqfile",  alignment_fname,
+                      "--queryfile",    queries_fname,
+                      "--outfile",      out_fname,
                       "--fast-placement",
                       "--test-every-terminal-node",
                       "--translate", 
@@ -33,13 +34,22 @@ class Pagan(ToolBase) :
                       "--threads", "1"
                      ]
 
-        if self.tree_file :
+        if tree_fname :
             parameters.append("--ref-treefile")
-            parameters.append(self.tree_file)
+            parameters.append(tree_fname)
         else :
             parameters.append("--pileup-alignment")
 
-        returncode, output = self._execute(parameters, self.output_filenames())
+        self.alignment_fname = out_fname + '.fas'
+
+        returncode, output = self._execute(parameters, self.output_filenames(out_fname))
+
+        #import os, sys
+        #print >> sys.stderr, alignment_fname, tree_fname, queries_fname, self.alignment_fname
+        #os._exit(0)
 
         return returncode
+
+if __name__ == '__main__' :
+    print Pagan().name, "version is", Pagan().version
 

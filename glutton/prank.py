@@ -1,24 +1,48 @@
-from glutton.base import ToolBase
+from glutton.base import ExternalTool, ExternalToolError
 
-class Prank(ToolBase) :
-    def __init__(self, opt, infile) :
-        super(Prank, self).__init__(opt)
-        
-        self.infile = infile
-        self.outfile = self._swap_dirname(infile, self.tmpdir)
+class Prank(ExternalTool) :
+    def __init__(self) :
+        super(Prank, self).__init__()
 
-    def output_filenames(self) :
-        return [self.outfile + x for x in [".1.dnd", ".2.dnd", ".nuc.1.fas", ".nuc.2.fas", ".pep.1.fas", ".pep.2.fas"]]
+        self.tree_file = None
+        self.alignment_file = None
 
-    def run(self) :
+    @property
+    def version(self) :
+        returncode, output = self._execute(["-version"], [], [])
+
+        for line in output.split('\n') :
+            if line.startswith('This is PRANK') :
+                v = line.strip().split()[-1]
+                return v[:-1]
+
+        raise ExternalToolError('could not get version of prank')
+
+    @property
+    def tree(self) :
+        return self.tree_file
+
+    @property
+    def alignment(self) :
+        return self.alignment_file
+
+    def output_filenames(self, outfile) :
+        return [outfile + x for x in [".best.dnd", ".best.fas"]]
+
+    def run(self, d, o) :
         parameters = [
-                      "-d=%s" % self.infile, 
-                      "-o=%s" % self.outfile, 
-                      "-translate", 
+                      "-d=%s" % d, 
+                      "-o=%s" % o, 
                       "-showtree"
                      ]
 
-        returncode, output = self._execute(parameters, self.output_filenames())
+        returncode, output = self._execute(parameters, self.output_filenames(o))
+
+        self.tree_file = o + ".best.dnd"
+        self.alignment_file = o + ".best.fas"
 
         return returncode
+
+if __name__ == '__main__' :
+    print Prank().name, "version is", Prank().version
 

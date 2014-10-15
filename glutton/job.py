@@ -1,10 +1,9 @@
 import os
 
-from glutton.base import Base
-from glutton.manifest import Manifest, ManifestError
+from glutton.utils import get_log, tmpfasta, tmpfile, rm_f
 from glutton.prank import Prank
 from glutton.pagan import Pagan
-from glutton.exonerate import ExonerateError
+from glutton.blastx import Blastx
 
 from abc import abstractmethod
 from os.path import basename, isfile, join
@@ -12,22 +11,22 @@ from os.path import basename, isfile, join
 class JobError(Exception) :
     pass
 
-class Job(Base) :
+class Job(object) :
     QUEUED,RUNNING,SUCCESS,FAIL,TERMINATED,INTERNAL_ERROR = range(6)
 
     states = {
-        QUEUED     : 'QUEUED',
-        RUNNING    : 'RUNNING',
-        SUCCESS    : 'SUCCESS',
-        FAIL       : 'FAIL',
-        TERMINATED : 'TERMINATED',
-        INTERNAL_ERROR : 'INTERNAL_ERROR'
+        QUEUED          : 'QUEUED',
+        RUNNING         : 'RUNNING',
+        SUCCESS         : 'SUCCESS',
+        FAIL            : 'FAIL',
+        TERMINATED      : 'TERMINATED',
+        INTERNAL_ERROR  : 'INTERNAL_ERROR'
     }
 
-    def __init__(self, opt) :
-        super(Job, self).__init__(opt)
-
+    def __init__(self, callback) :
         self.state = Job.QUEUED
+        self.log = get_log()
+        self.callback = callback
 
     def success(self) :
         if self.state not in (Job.SUCCESS, Job.FAIL, Job.TERMINATED, Job.INTERNAL_ERROR) :
@@ -51,13 +50,17 @@ class Job(Base) :
     def run(self) :
         self.start()
         
-        try :
-            ret = self._run()
+        ret = self._run()
 
-        except Exception, e :
-            self.error(str(e))
-            self.end(Job.INTERNAL_ERROR)
-            return
+#       XXX
+#        try :
+#            ret = self._run()
+#
+#        except Exception, e :
+#            self.log.error(str(e))
+#            self.end(Job.INTERNAL_ERROR)
+#            self.cleanup()
+#            return
 
         if ret == 0 :
             self.end(Job.SUCCESS)
@@ -66,97 +69,120 @@ class Job(Base) :
         else :
             self.end(Job.TERMINATED)
 
+        self.callback(self)
+        self.cleanup()
+
     def state_str(self) :
         return Job.states[self.state]
+
+    # delete only the files the program created
+    # the responsibility to delete the input files is for the caller
+    def cleanup(self) :
+        for f in self._get_filenames() :
+            if f and isfile(f) :
+                self.log.debug("deleting %s" % f)
+                rm_f(f)
 
     @abstractmethod
     def _run(self) :
         pass
 
+    @abstractmethod
+    def _get_filenames(self) :
+        pass
+
     def __str__(self) :
-        return "%s, %s" % (type(self).__name__, self.fname)
+        return type(self).__name__ #"%s, %s" % (type(self).__name__, self.fname)
 
 class PrankJob(Job) :
-    def __init__(self, opt, manifest, fname) :
-        super(PrankJob, self).__init__(opt)
+    def __init__(self, callback, sequences) :
+        super(PrankJob, self).__init__(callback)
 
-        self.manifest = manifest
-        self.fname = fname
+        self.sequences = sequences
+        self.prank = Prank()
 
-        assert os.path.isabs(self.fname) and os.path.isfile(self.fname)
+    @property
+    def input(self) :
+        return self.sequences
+
+    @property
+    def tree(self) :
+        return self.prank.tree
+
+    @property
+    def alignment(self) :
+        return self.prank.alignment
+
+    def _get_filenames(self) :
+        return [self.infile] + self.prank.output_filenames(self.infile)
 
     def _run(self) :
-        p = Prank(self.opt, self.fname)
+        self.infile = tmpfasta(self.sequences)
 
-        ret = p.run()
+        return self.prank.run(self.infile, self.infile)
 
-        if ret == 0 :
-            for f in p.output_filenames() :
-                self.manifest.append_to_manifest(f, self._contents(f), create=True)
-                os.remove(f)
+class BlastxJob(Job) :
+    def __init__(self, callback, database, queries) :
+        super(BlastxJob, self).__init__(callback)
 
-        return ret
+        self.database = database
+        self.queries = queries
+
+        self.blastx = Blastx()
+
+    @property
+    def input(self) :
+        return self.queries
+
+    @property
+    def results(self) :
+        return self.blastx.results
+
+    def _get_filenames(self) :
+        return [self.query_fname, self.out_fname]
+
+    def _run(self) :
+        self.query_fname = tmpfasta(self.queries)
+        self.out_fname = tmpfile()
+
+        return self.blastx.run(self.query_fname, self.database, self.out_fname)
 
 class PaganJob(Job) :
-    def __init__(self, opt, transcriptome, fname, outdir) :
-        super(PaganJob, self).__init__(opt)
+    def __init__(self, callback, queries, genefamily_id, alignment, tree) :
+        super(PaganJob, self).__init__(callback)
 
-        self.fname = fname
-        self.transcriptome = transcriptome
-        self.outdir = outdir
+        self._queries = queries
+        self._genefamily = genefamily_id
+        self._alignment = alignment
+        self._tree = tree
 
-        assert os.path.isabs(self.fname)  and os.path.isfile(self.fname)
-        assert os.path.isabs(self.outdir) and os.path.isdir(self.outdir)
+        self.pagan = Pagan()
+
+    @property
+    def input(self) :
+        return self._queries
+
+    @property
+    def genefamily(self) :
+        return self._genefamily
+
+    @property
+    def alignment(self) :
+        return self.pagan.alignment
+
+    def _get_filenames(self) :
+        return [self.query_fname, self.alignment_fname, self.tree_fname] + self.pagan.output_filenames(self.out_fname)
 
     def _run(self) :
-        ret = 1
+        self.query_fname        = tmpfasta(self._queries)
+        self.out_fname          = tmpfile()
+        self.alignment_fname    = tmpfasta(self._alignment)
+        
+        self.tree_fname = tmpfile(self._tree) if self._tree else None
+        
 
-        try :
-            job_list = self.transcriptome.query(self.fname)
-
-        except ExonerateError, ee :
-            self.info("%s : %s" % (basename(self.fname), str(ee)))
-            os.remove(self.fname)
-            return 1
-
-
-        for index,job in enumerate(job_list) :
-            root_fname, num_genes = job
-            a_fname = root_fname
-            t_fname = None
-
-            self.info("aligning contig in '%s' against gene family in '%s'..." % (basename(self.fname), basename(root_fname)))
-
-            if num_genes > 1 :
-                a_fname = root_fname + '.nuc.2.fas'
-                t_fname = root_fname + '.2.dnd'
-
-            p = Pagan(self.opt,
-                  alignment_file=a_fname, 
-                  tree_file=t_fname, 
-                  query_file=self.fname,
-                  out_dir=self.outdir)
-
-            p.run()
-
-            tmp = join(self.outdir, basename(self.fname))
-            fas = tmp + '.fas'
-            dna = tmp + '.dna.fas'
-
-            if isfile(fas) and isfile(dna) :
-                ret = 0
-                os.rename(fas, "%s.%d.fas" % (tmp, index))
-                os.rename(dna, "%s.%d.dna.fas" % (tmp, index))
-
-                self.info("align '%s' --> '%s' success" % (basename(self.fname), basename(root_fname)))
-            else :
-                self.info("align '%s' --> '%s' fail" % (basename(self.fname), basename(root_fname)))
-
-        if ret != 0 :
-            self._safe_write(join(self.outdir, 'failures.txt'), basename(self.fname))
-
-        # remove query file
-        os.remove(self.fname)
-
-        return ret
+        return self.pagan.run(self.query_fname, 
+                              self.out_fname, 
+                              self.alignment_fname, 
+                              self.tree_fname)
 

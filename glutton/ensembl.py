@@ -10,7 +10,7 @@ import itertools
 import re
 
 
-DEBUG = True
+DEBUG = False
 
 ensembl_sql_hosts = {
             'ensembl' : {
@@ -26,6 +26,16 @@ ensembl_sql_hosts = {
                     'port'     : 4157
                 }
         }
+
+def custom_database(hostname, port, username, password) :
+    global ensembl_sql_hosts
+
+    ensembl_sql_hosts.clear()
+
+    ensembl_sql_hosts['hostname'] = hostname
+    ensembl_sql_hosts['port']     = port
+    ensembl_sql_hosts['username'] = username
+    ensembl_sql_hosts['password'] = password
 
 def get_all_peptides_SQL(genome_db_id, release) : 
     if release < 76 :
@@ -82,16 +92,13 @@ def invalid_ensembl_db(name) :
 
 
 class SpeciesNotFoundError(Exception) :
-    def __init__(self, s) :
-        super(SpeciesNotFoundError, self).__init__(s)
+    pass
 
 class ReleaseNotFoundError(Exception) :
-    def __init__(self, s) :
-        super(ReleaseNotFoundError, self).__init__(s)
+    pass
 
 class SQLQueryError(Exception) :
-    def __init__(self, s) :
-        super(SQLQueryError, self).__init__(s)
+    pass
 
 
 def make_connection(user, password, host, port, db="", echo=False) :
@@ -190,7 +197,7 @@ def get_compara_species(db_host, db_name) :
 # return dictionary of species name -> range string
 # parameter db_name can be used to limit the enumeration to
 # e.g. 'metazoa'
-def get_species_versions(db_name="", species=None, human_readable=True) :
+def get_species_versions(db_name="", species=None, human_readable=True, suppress=None) :
     
     if invalid_ensembl_db(db_name) :
         raise BadEnsemblDBNameError("%s not a valid name" % db_name)
@@ -211,6 +218,19 @@ def get_species_versions(db_name="", species=None, human_readable=True) :
         else :
             for s in species_table :
                 species_version_table[s].append(db[1])
+
+    # suppress releases older than a certain version
+    # but default don't do this
+    if suppress :
+        keys_to_delete = []
+        for i in species_version_table :
+            species_version_table[i] = [ x for x in species_version_table[i] if not x < suppress ]
+
+            if len(species_version_table[i]) == 0 :
+                keys_to_delete.append(i)
+
+        for i in keys_to_delete :
+            del species_version_table[i]
 
     if human_readable :
         for i in species_version_table :
@@ -373,8 +393,8 @@ class EnsemblDownloader(object) :
     def get_latest_release(self, species) :
         return get_latest_release(species)
 
-    def get_all_species(self, db="") :
-        return sorted(get_species_versions(db).items())
+    def get_all_species(self, db="", suppress=None) :
+        return sorted(get_species_versions(db_name=db, suppress=suppress).items())
 
     def user_database(self, db_name, host, port, user, passwd) :
         global ensembl_sql_hosts
@@ -397,10 +417,10 @@ class EnsemblDownloader(object) :
 if __name__ == '__main__' :
     e = EnsemblDownloader()
 
-    for i in e.get_all_species(db='ensembl') :
+    for i in e.get_all_species(db='protists') :
         print i
 
-    families = e.download('tribolium_castaneum')
+    #families = e.download('tribolium_castaneum')
 
 
 #version_table, db_table = get_compara_versions()

@@ -158,20 +158,36 @@ class Base(object) :
                 pass
 
 class ToolBase(Base) :
-    def __init__(self, opt) :
-        super(ToolBase, self).__init__(opt)
+    pass
 
-        self.binary_location = opt[self.name]
+# XXX kill everything above ^
+from sys import exit
+from os.path import isfile
+
+from glutton.utils import get_log, get_binary_path
+
+
+class ExternalToolError(Exception) :
+    pass
+
+class ExternalTool(object) :
+    def __init__(self, location=None) :
+        self.binary_location = get_binary_path(self.name) if not location else location
+        self.log = get_log()
 
     @property
     def name(self) :
         return type(self).__name__.lower()
 
+    @property
+    def version(self) :
+        raise NotImplementedError()
+
     def _execute(self, parameters, expected_outfiles) :
         returncode = 0
         output = ""
 
-        self.info(' '.join(parameters))
+        self.log.debug(' '.join([self.binary_location] + parameters))
 
         try :
             output = subprocess.check_output(
@@ -184,26 +200,13 @@ class ToolBase(Base) :
             returncode = cpe.returncode
             output = cpe.output
 
-#        returncode,output = commands.getstatusoutput(' '.join([self.binary_location] + parameters))
-#
-#        if returncode != 0 :
-#            if not self.opt['force'] :
-#                self.error("return code = %d\n\n%s\n" % (returncode, output))
-#                sys.exit(1)
-#        else :
+        # some program misbehave, so be careful to check the expected output
+        # and change returncode as necessary
         if returncode == 0 :
-            missing = [o for o in expected_outfiles if not self._check_file(o)]
+            missing = [o for o in expected_outfiles if not isfile(o)]
             if len(missing) != 0 :
-                returncode = -1
+                returncode = 256
                 output = "the following files were missing : %s" % ' '.join(missing)
-
-        if returncode > 0 and not self.force :
-            self.error(' '.join([self.binary_location] + parameters))
-            self.error("return code = %d\n\n%s\n" % (returncode, output))
-            #sys.exit(1)
-
-        if returncode != 0 and self.force :
-            self.warn("return code = %d" % (returncode))
 
         return returncode, output
 
