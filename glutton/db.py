@@ -245,6 +245,10 @@ class GluttonDB(object) :
             self.log.info("release not provided, finding out latest release...")
             release = e.get_latest_release(species)
         
+        # default name if it was not defined
+        if not self.fname :
+            self.fname = "%s_%d.glt" % (species, release)
+
         self.log.info("downloading %s/%d" % (species, release))
         
         self.data = ensembl_to_glutton_internal(e.download(species, release))

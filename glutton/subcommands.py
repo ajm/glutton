@@ -1,6 +1,11 @@
+from sys import stderr, exit
+import os
+import signal
+
 from glutton.utils import get_log
 from glutton.ensembl import EnsemblDownloader
 from glutton.table import pretty_print_table
+from glutton.db import GluttonDB
 
 
 def list_command(args) :
@@ -27,15 +32,30 @@ def list_command(args) :
 
     return 0
 
-def build_command() :
+def build_command(args) :
+    log = get_log()
+    gdb = GluttonDB()
+
+    def _cleanup(signal, frame) :
+        print >> stderr, "Killed by user, cleaning up...",
+        gdb.stop()
+        print >> stderr, "done"
+        os._exit(0)
+
+    signal.signal(signal.SIGINT, _cleanup)
+
+    gdb.build(args.output, args.species, args.release)
+
+    log.info("built database %s" % gdb.filename)
+    
+    return 0
+
+def check_command(args) :
+    return 0 if GluttonDB(args.gltfile).sanity_check() else 1
+
+def align_command(args) :
     pass
 
-def check_command() :
-    pass
-
-def align_command() :
-    pass
-
-def scaffold_command() :
+def scaffold_command(args) :
     pass
 
