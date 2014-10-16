@@ -6,6 +6,7 @@ from glutton.utils import get_log
 from glutton.ensembl import EnsemblDownloader
 from glutton.table import pretty_print_table
 from glutton.db import GluttonDB
+from glutton.aligner import Aligner
 
 
 def list_command(args) :
@@ -37,7 +38,7 @@ def build_command(args) :
     gdb = GluttonDB()
 
     def _cleanup(signal, frame) :
-        print >> stderr, "Killed by user, cleaning up...",
+        print >> stderr, "Killed by user, cleaning up..."
         gdb.stop()
         print >> stderr, "done"
         os._exit(0)
@@ -54,7 +55,27 @@ def check_command(args) :
     return 0 if GluttonDB(args.gltfile).sanity_check() else 1
 
 def align_command(args) :
-    pass
+    log = get_log()
+    align = Aligner(args.reference, 
+                    args.contigs, 
+                    args.output, 
+                    args.identity, 
+                    args.length, 
+                    args.batch_size)
+
+    def _cleanup(signal, frame) :
+        print >> sys.stderr, "Killed by user, cleaning up..."
+        align.stop()
+        print >> sys.stderr, "clean up done"
+        os._exit(0)
+
+    signal.signal(signal.SIGINT, _cleanup)
+
+    align.align()
+
+    log.info("alignment complete!")
+
+    return 0
 
 def scaffold_command(args) :
     pass

@@ -85,7 +85,22 @@ def handle_args(args) :
     parser_check.add_argument('gltfile')
 
     # align options
-    # TODO
+    parser_align = subparsers.add_parser('align', formatter_class=fmt,
+                              help='align contigs against reference transcript database')
+    parser_align.add_argument('-g', '--reference', type=str, required=True,
+                              help='reference database, (normally a .glt file)')
+    parser_align.add_argument('-c', '--contigs', type=str, required=True,
+                              help='fasta files containing contigs')
+    parser_align.add_argument('-o', '--output', type=str, default='./alignment_results',
+                              help='output directory to store alignment files')
+    parser_align.add_argument('-i', '--identity', type=float, default=0.7,
+                              help='minimum protein identity for local alignment step')
+    parser_align.add_argument('-l', '--length', type=int, default=200,
+                              help='minimum contig length')
+    parser_align.add_argument('-b', '--batch-size', type=int, default=100,
+                              help='batch size for number of queries for local alignment')
+
+    add_generic_options(parser_align)
 
     # scaffold options
     # TODO
