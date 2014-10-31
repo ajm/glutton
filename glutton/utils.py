@@ -2,6 +2,7 @@ import tempfile
 import os
 import logging
 import platform
+import hashlib
 
 from sys import exit
 from multiprocessing import cpu_count
@@ -124,7 +125,36 @@ def set_verbosity(verbosity_level) :
     else :
         _glutton_stream_loglevel = logging.DEBUG
 
-def glutton_log_defaults(log) :
+def duration_str(seconds) :
+    seconds = int(seconds)
+
+    hours = seconds / 3600
+    seconds %= 3600
+    minutes = seconds / 60
+    seconds %= 60
+
+    s = ""
+    if hours :
+        s += ("%d hour%s " % (hours, "" if hours == 1 else "s"))
+
+    if minutes :
+        s += ("%d minute%s " % (minutes, "" if minutes == 1 else "s"))
+
+    s += ("%d second%s" % (seconds, "" if seconds == 1 else "s"))
+
+    return s
+
+def md5(fname) :
+    m = hashlib.md5()
+    f = open(fname)
+
+    for block in f.read(1024) :
+        m.update(block)
+
+    f.close()
+    return m.hexdigest()
+
+def log_defaults(log) :
     global _glutton_stream_loglevel
 
     log.setLevel(logging.DEBUG)
@@ -144,6 +174,9 @@ def glutton_log_defaults(log) :
 
     return log
 
+def setup_logging() :
+    log_defaults(get_log())
+
 def get_log() :
     return logging.getLogger('glutton')
 
@@ -151,8 +184,10 @@ def get_log() :
 if __name__ == '__main__' :
     print get_binary_path('ls')
 
+    set_verbosity(3)
+    setup_logging()
+
     l = get_log()
-    l = glutton_log_defaults(l)
     l.error("error")
     l.warn("warn")
     l.info("info")

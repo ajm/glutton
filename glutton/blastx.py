@@ -14,14 +14,14 @@ class Blastx(ExternalTool) :
 
     @property
     def version(self) :
-        returncode, output = self._execute(["-version"], [], [])
+        returncode, output = self._execute(["-version"], [])
 
         for line in output.split('\n') :
             if line.startswith('blastx') :
                 v = line.strip().split()[-1]
                 return v[:-1]
 
-        raise ExternalToolError('could get version of blastx')
+        raise ExternalToolError('could not get version of blastx')
     
     @staticmethod
     def makedb(db_fname) :

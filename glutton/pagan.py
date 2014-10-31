@@ -6,14 +6,14 @@ class Pagan(ExternalTool) :
 
     @property
     def version(self) :
-        returncode, output = self._execute(["--version"], [], [])
+        returncode, output = self._execute(["--version"], [])
 
         for line in output.split('\n') :
             if line.startswith('This is PAGAN') :
                 v = line.strip().split()[-1]
                 return v[:-1]
 
-        raise ExternalToolError('could get version of pagan')
+        raise ExternalToolError('could not get version of pagan')
 
     @property
     def alignment(self) :

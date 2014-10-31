@@ -8,27 +8,6 @@ from glutton.job import Job, JobError
 from glutton.utils import get_log, num_threads
 
 
-def _order_key(k) :
-    if isinstance(k, list) :
-        return sum([ len(i) for i in k ])
-    else :
-        return len(k)
-
-# maybe this is the wrong way to do this now...
-#
-# the queue used to be
-# drip fed with jobs from a caller whose responsibility it was to create 
-# and delete files for the job, now the input is stored in memory and the
-# output read in a callback function that the caller provides, allowing 
-# the super class Job object to delete both the input and output files
-# simplifying all the calling code
-#
-# long running jobs should be given first, so
-# sort the input by total length of input sequence as a heuristic
-def order_jobs(x) :
-    x.sort(key=_order_key, reverse=True)
-    return x
-
 class WorkQueueError(Exception) :
     pass
 

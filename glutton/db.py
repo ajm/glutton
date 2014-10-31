@@ -5,13 +5,12 @@ import tempfile
 import os
 import logging
 import threading
-import hashlib
 
 import glutton
 from glutton.xmlparser import GluttonXMLManifest, GluttonXMLData, GluttonXMLMapping
-from glutton.ensembl import EnsemblDownloader
+from glutton.ensembl import EnsemblDownloader, SQLQueryError
 from glutton.genefamily import ensembl_to_glutton_internal, Gene, GeneFamily, read_alignment_as_genefamily
-from glutton.utils import tmpfile, get_log
+from glutton.utils import tmpfile, get_log, md5
 from glutton.queue import WorkQueue
 from glutton.job import PrankJob
 from glutton.prank import Prank
@@ -51,7 +50,7 @@ class GluttonDB(object) :
         self.lock = threading.Lock()
 
         self.log = get_log()
-        
+
         if self.fname :
             self._read()
 
@@ -72,15 +71,7 @@ class GluttonDB(object) :
 
     @property
     def checksum(self) :
-        m = hashlib.md5()
-        f = open(self.fname)
-
-        for block in f.read(1024) :
-            m.update(block)
-
-        f.close()
-
-        return m.hexdigest()
+        return md5(self.fname)
 
     def stop(self) :
         if self.q :
@@ -189,22 +180,37 @@ class GluttonDB(object) :
         return "%s_%d_mapping.xml" % (species, release)
 
     def build(self, fname, species, release=None) :
-
         self.fname = fname
 
+        # release not specified
+        if not release :
+            self.log.info("release not provided, getting: latest release...")
+            release = EnsemblDownloader().get_latest_release(species)
+
+        # default name if it was not defined
+        if not self.fname :
+            self.fname = "%s_%d.glt" % (species, release)
+            self.log.info("database filename not specified, using '%s'" % self.fname)
+
+        # are we resuming or starting fresh?
         if not os.path.exists(self.fname) :
             self.log.info("'%s' does not exist, creating..." % self.fname)
             self._initialise_db(species, release)
         else :
             self.log.info("'%s' exists, resuming..." % self.fname)
 
+        # either way, we contents into memory
         self._read()
 
+        # no work to do
         if self.is_complete() : 
             self.log.info("'%s' is already complete!" % self.fname)
             return
 
+        # build db
         self._perform_alignments()
+        
+        # write to disk
         self._write()
 
         self.log.info("finished building %s/%s" % \
@@ -238,20 +244,17 @@ class GluttonDB(object) :
 
         self.q.join()
 
-    def _initialise_db(self, species, release=None) :
+    def _initialise_db(self, species, release) :
         e = EnsemblDownloader()
-
-        if not release :
-            self.log.info("release not provided, finding out latest release...")
-            release = e.get_latest_release(species)
-        
-        # default name if it was not defined
-        if not self.fname :
-            self.fname = "%s_%d.glt" % (species, release)
-
         self.log.info("downloading %s/%d" % (species, release))
         
-        self.data = ensembl_to_glutton_internal(e.download(species, release))
+        try :
+            self.data = ensembl_to_glutton_internal(e.download(species, release))
+
+        except SQLQueryError, sql :
+            self.log.fatal(sql.message)
+            exit(1)
+
 
         self.log.info("writing sequences and manifest to %s ..." % (self.fname))
 

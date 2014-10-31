@@ -9,7 +9,7 @@ class Prank(ExternalTool) :
 
     @property
     def version(self) :
-        returncode, output = self._execute(["-version"], [], [])
+        returncode, output = self._execute(["-version"], [])
 
         for line in output.split('\n') :
             if line.startswith('This is PRANK') :

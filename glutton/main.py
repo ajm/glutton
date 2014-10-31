@@ -4,12 +4,13 @@ if version_info < (2,7) :
     print >> stderr, "Sorry: requires python version 2.7 or greater (but not python 3.x)\n"
     exit(1)
 
+import time
 import argparse
 
 import glutton
 import glutton.subcommands
 
-from glutton.utils import tmpdir, set_threads, num_threads, set_tmpdir, set_verbosity, glutton_log_defaults, get_log
+from glutton.utils import tmpdir, set_threads, num_threads, set_tmpdir, set_verbosity, setup_logging, get_log, duration_str
 from glutton.ensembl import custom_database
 
 
@@ -32,9 +33,9 @@ def handle_args(args) :
                 formatter_class=fmt)
     
     def add_generic_options(par) :
-        par.add_argument('-t', '--tmpdir', type=str, default=tmpdir(),
+        par.add_argument('--tmpdir', type=str, default=tmpdir(),
                          help='temporary directory')
-        par.add_argument('-c', '--threads', type=int, default=num_threads(),
+        par.add_argument('--threads', type=int, default=num_threads(),
                          help='number of threads')
         par.add_argument('-v', '--verbose',  action='count', default=0, 
                          help='set verbosity, can be set multiple times e.g.: -vvv')
@@ -51,24 +52,43 @@ def handle_args(args) :
         par.add_argument('--database-password', type=str, default="", 
                          help='specify database password')
 
+    def check_zero_one(v):
+        x = float(v)
+        if x < 0.0 or x > 1.0 :
+            raise argparse.ArgumentTypeError("%s is not in the range [0.0,1.0]" % v)
+        return x
     
+    def check_non_negative(v) :
+        x = int(v)
+        if x < 0 :
+            raise argparse.ArgumentTypeError("%s is negative" % v)
+        return x
+    
+    def check_greater_than_zero(v) :
+        x = int(v)
+        if x < 1 :
+            raise argparse.ArgumentTypeError("%s is zero or less" % v)
+        return x
+
+
     subparsers = parser.add_subparsers(help='subcommands')
+
+    ensembl_db = ('ensembl', 'metazoa', 'fungi', 'protists', 'plants', 'bacteria')
 
     # list options
     parser_list = subparsers.add_parser('list', formatter_class=fmt,
-                             help='list ensembl species command')
+                             help='list ensembl species')
     parser_list.add_argument('-v', '--verbose',  action='count', default=0,   
                              help='set verbosity, can be set multiple times e.g.: -vvv')
-    parser_list.add_argument('-d', '--database-name', default='ensembl',
-                             choices=('ensembl', 'metazoa', 'fungi', 'protists', 'plants', 'bacteria'),
-                             help='specify main ensembl database or one of the ensembl-genomes databases')
+    parser_list.add_argument('-d', '--database-name', default='ensembl', metavar='DB', choices=ensembl_db,
+    help='specify main ensembl database or one of the ensembl-genomes databases, options are %s' % ', '.join(ensembl_db))
     parser_list.add_argument('--suppress', type=int,
-                            help='suppress older releases (default depends on database)')
+                             help='suppress older releases (default depends on database)')
     add_database_options(parser_list)
 
     # build options
     parser_build = subparsers.add_parser('build', formatter_class=fmt,
-                              help='build database command')
+                              help='build reference transcript database from ensembl')
     parser_build.add_argument('-s', '--species', type=str, required=True,
                               help='ensembl species name (see list command output)')
     parser_build.add_argument('-r', '--release', type=int, 
@@ -81,8 +101,11 @@ def handle_args(args) :
 
     # check options
     parser_check = subparsers.add_parser('check', 
-                              help='check %s database' % glutton.__name__)
+                              help='check %s database for errors/completeness' % glutton.__name__)
     parser_check.add_argument('gltfile')
+
+    
+    default_alignment_dir = './alignment_results'
 
     # align options
     parser_align = subparsers.add_parser('align', formatter_class=fmt,
@@ -90,20 +113,33 @@ def handle_args(args) :
     parser_align.add_argument('-g', '--reference', type=str, required=True,
                               help='reference database, (normally a .glt file)')
     parser_align.add_argument('-c', '--contigs', type=str, required=True,
-                              help='fasta files containing contigs')
-    parser_align.add_argument('-o', '--output', type=str, default='./alignment_results',
+                              help='fasta file containing contigs')
+    parser_align.add_argument('-a', '--alignments', type=str, default=default_alignment_dir,
                               help='output directory to store alignment files')
-    parser_align.add_argument('-i', '--identity', type=float, default=0.7,
+    parser_align.add_argument('-i', '--identity', type=check_zero_one, default=0.75,
                               help='minimum protein identity for local alignment step')
-    parser_align.add_argument('-l', '--length', type=int, default=200,
+    parser_align.add_argument('-l', '--length', type=check_non_negative, default=200,
                               help='minimum contig length')
-    parser_align.add_argument('-b', '--batch-size', type=int, default=100,
+    parser_align.add_argument('-b', '--batch-size', type=check_greater_than_zero, default=100,
                               help='batch size for number of queries for local alignment')
 
     add_generic_options(parser_align)
 
     # scaffold options
-    # TODO
+    parser_scaf = subparsers.add_parser('scaffold', formatter_class=fmt,
+                             help='scaffold contigs together based on evolutionary alignment results')
+    parser_scaf.add_argument('-g', '--reference', type=str, required=True,
+                             help='reference database, (normally a .glt file)')
+    parser_scaf.add_argument('-c', '--contigs', type=str, required=True,
+                             help='fasta file containing contigs')
+    parser_scaf.add_argument('-a', '--alignments', type=str, default=default_alignment_dir,
+                             help='directory containing evolutionary alignments')
+    parser_scaf.add_argument('-i', '--identity', type=check_zero_one, default=0.9,
+                             help='minimum nucleotide identity for contig overlaps')
+    parser_scaf.add_argument('-s', '--scaffolds', type=str, default='scaffolds.fasta',
+                             help='output file for scaffolds')
+
+    add_generic_options(parser_scaf)
 
     return parser.parse_args(args)
 
@@ -128,15 +164,22 @@ def generic_options(args) :
     if hasattr(args, 'verbose') :
         set_verbosity(args.verbose)
 
-    glutton_log_defaults(get_log())
+    setup_logging()
 
 def main() :
     args = handle_args(argv[1:])
 
     generic_options(args)
 
-    return commands[argv[1]](args)
+    start_time = time.time()
 
+    get_log().info("this is glutton version %s" % str(glutton.__version__))
+
+    ret = commands[argv[1]](args)
+
+    get_log().info("%s took %s" % (argv[1], duration_str(time.time() - start_time)))
+
+    return ret
 
 if __name__ == '__main__' :
     try :

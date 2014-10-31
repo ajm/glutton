@@ -32,10 +32,12 @@ def custom_database(hostname, port, username, password) :
 
     ensembl_sql_hosts.clear()
 
-    ensembl_sql_hosts['hostname'] = hostname
-    ensembl_sql_hosts['port']     = port
-    ensembl_sql_hosts['username'] = username
-    ensembl_sql_hosts['password'] = password
+    ensembl_sql_hosts['user'] = {}
+
+    ensembl_sql_hosts['user']['hostname'] = hostname
+    ensembl_sql_hosts['user']['port']     = port
+    ensembl_sql_hosts['user']['username'] = username
+    ensembl_sql_hosts['user']['password'] = password
 
 def get_all_peptides_SQL(genome_db_id, release) : 
     if release < 76 :
@@ -103,7 +105,11 @@ class SQLQueryError(Exception) :
 
 def make_connection(user, password, host, port, db="", echo=False) :
     e = create_engine('mysql://%s:%s@%s:%d/%s' % (user, password, host, port, db), echo=echo)
-    return e.connect()
+    try :
+        return e.connect()
+    
+    except SQLAlchemyError, sql :
+        raise SQLQueryError(sql.message)
 
 def make_connection_dict(d, db="", echo=False) :
     return make_connection(d['username'], d['password'], d['hostname'], d['port'], db, echo)
@@ -395,16 +401,6 @@ class EnsemblDownloader(object) :
 
     def get_all_species(self, db="", suppress=None) :
         return sorted(get_species_versions(db_name=db, suppress=suppress).items())
-
-    def user_database(self, db_name, host, port, user, passwd) :
-        global ensembl_sql_hosts
-
-        ensembl_sql_hosts.clear()
-
-        ensembl_sql_hosts[db_name]['username'] = user
-        ensembl_sql_hosts[db_name]['password'] = passwd
-        ensembl_sql_hosts[db_name]['hostname'] = host
-        ensembl_sql_hosts[db_name]['port'] = port
 
     #def add_glutton_ids(self, families) :
     #    return dict(zip(( "glutton%d" % i for i in xrange(len(families)) ), families))
