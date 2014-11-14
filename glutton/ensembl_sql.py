@@ -9,8 +9,11 @@ from collections import defaultdict
 import itertools 
 import re
 
+from glutton.utils import get_log
+
 
 DEBUG = False
+#DEBUG = True
 
 ensembl_sql_hosts = {
             'ensembl' : {
@@ -39,7 +42,9 @@ def custom_database(hostname, port, username, password) :
     ensembl_sql_hosts['user']['username'] = username
     ensembl_sql_hosts['user']['password'] = password
 
-def get_all_peptides_SQL(genome_db_id, release) : 
+def get_all_sequences_SQL(genome_db_id, release, nucleotide=False) :
+    source_name = "ENSEMBLTRANS" if nucleotide else "ENSEMBLPEP"
+ 
     if release < 76 :
         return """
     SELECT m.member_id, m2.stable_id, s.sequence
@@ -47,9 +52,10 @@ def get_all_peptides_SQL(genome_db_id, release) :
     JOIN member m 
         USING (sequence_id)
     JOIN member m2 
-        ON m.gene_member_id=m2.member_id 
-    WHERE m.source_name="ENSEMBLPEP"
-        AND m.genome_db_id=%d""" % genome_db_id
+        ON m2.canonical_member_id=m.member_id 
+    WHERE m2.source_name="ENSEMBLGENE"
+        AND m.source_name="%s"
+        AND m2.genome_db_id=%d""" % (source_name, genome_db_id)
     else :
         return """
     SELECT gm.gene_member_id, gm.stable_id, s.sequence
@@ -57,10 +63,10 @@ def get_all_peptides_SQL(genome_db_id, release) :
     JOIN seq_member sm 
         USING (sequence_id)
     JOIN gene_member gm
-        USING (gene_member_id)
-    WHERE sm.source_name="ENSEMBLPEP"
-        AND gm.genome_db_id=%d""" % genome_db_id
-    
+        ON sm.seq_member_id=gm.canonical_member_id
+    WHERE sm.source_name="%s"
+        AND gm.genome_db_id=%d""" % (source_name, genome_db_id)
+ 
 def get_all_homology_SQL(genome_db_id, release) :
     if release < 76 :
         return """
@@ -100,6 +106,9 @@ class ReleaseNotFoundError(Exception) :
     pass
 
 class SQLQueryError(Exception) :
+    pass
+
+class NoResultsError(Exception) :
     pass
 
 
@@ -200,6 +209,9 @@ def get_compara_species(db_host, db_name) :
 
     return species_table
 
+def get_all_species_sql(db, suppress) :
+    return get_species_versions(db_name=db, suppress=suppress).items()
+
 # return dictionary of species name -> range string
 # parameter db_name can be used to limit the enumeration to
 # e.g. 'metazoa'
@@ -226,7 +238,7 @@ def get_species_versions(db_name="", species=None, human_readable=True, suppress
                 species_version_table[s].append(db[1])
 
     # suppress releases older than a certain version
-    # but default don't do this
+    # but don't do this by default
     if suppress :
         keys_to_delete = []
         for i in species_version_table :
@@ -302,14 +314,15 @@ def group_into_families(peptides, homologies) :
 
     return all_families
 
-def get_canonical_peptide_sequences(connection, species, release, genome_db_id) :
+def get_canonical_sequences(connection, species, release, nucleotide, genome_db_id) :
     # get a complete listing of canonical peptides for species
-    raw_results = perform_query(connection, get_all_peptides_SQL(genome_db_id, release))
+    raw_results = perform_query(connection, get_all_sequences_SQL(genome_db_id, release, nucleotide))
 
     id2peptide = dict([ (r[0], (r[1], r[2])) for r in raw_results ])
     
     if DEBUG :
-        with open("%s_%d_pep_raw.txt" % (species, release), 'w') as f :
+        
+        with open("%s_%d_%s_raw.txt" % (species, release, "nuc" if nucleotide else "pep"), 'w') as f :
             for r in raw_results :
                 print >> f, r
 
@@ -335,7 +348,7 @@ def get_homology_information(connection, species, release, genome_db_id) :
 
     return homologies
 
-def get_latest_release(species) :
+def get_latest_release_sql(species) :
     try :
         return max(get_species_versions(species=species, human_readable=False)[species])
 
@@ -345,7 +358,7 @@ def get_latest_release(species) :
 # download a listing of the canonical peptides and homology relations
 # for within_species_paralogs
 # e.g. tribolium_castineum, 75
-def download_database(species, release=None) :
+def download_database_sql(species, release=None, nucleotide=False) :
     global ensembl_sql_hosts
     global DEBUG
 
@@ -361,6 +374,11 @@ def download_database(species, release=None) :
 
     genome_db_id, db_host, db_name = find_database_for_species(species, release)
 
+    #print db_host, db_name
+
+    if DEBUG :
+        print >> stderr, "genome_db_id =", genome_db_id 
+
     connection = make_connection_dict(ensembl_sql_hosts[db_host], db_name)
 
     # a user would want to use the ensembl-genomes release number which differs
@@ -369,8 +387,11 @@ def download_database(species, release=None) :
     if db_host == 'ensembl-genomes' :
         release += 53
 
-    id2peptide = get_canonical_peptide_sequences(connection, species, release, genome_db_id)
+    id2peptide = get_canonical_sequences(connection, species, release, nucleotide, genome_db_id)
     homologies = get_homology_information(connection, species, release, genome_db_id)
+
+    if not id2peptide or not homologies :
+        raise NoResultsError()
 
     return group_into_families(id2peptide, homologies)
 
@@ -379,44 +400,16 @@ def test_download_database(species) :
         download_database(species, release)
 
 
-class EnsemblDownloader(object) :
-    def __init__(self) :
-        pass
-
-    # i should really just assume everything is valid in the calling code and 
-    # throw exceptions based on specific errors, i.e. bad species, bad release, etc
-    def is_valid_species (self, species, release=None) :
-        try :
-            releases = get_species_versions(species=species, human_readable=False)[species]
-        except KeyError :
-            return False
-
-        if release :
-            return release in releases
-
-        return True
-
-    def get_latest_release(self, species) :
-        return get_latest_release(species)
-
-    def get_all_species(self, db="", suppress=None) :
-        return sorted(get_species_versions(db_name=db, suppress=suppress).items())
-
-    #def add_glutton_ids(self, families) :
-    #    return dict(zip(( "glutton%d" % i for i in xrange(len(families)) ), families))
-
-    # returns peptide sequences + homologies
-    def download(self, species, release=None) :
-        return download_database(species, release)
-
-
 if __name__ == '__main__' :
+    test_species_listing()
+    exit(0)
+
     e = EnsemblDownloader()
 
-    for i in e.get_all_species(db='protists') :
-        print i
+    #for i in e.get_all_species(db='protists') :
+    #    print i
 
-    #families = e.download('tribolium_castaneum')
+    families = e.download('homo_sapiens', 77, nucleotide=False)
 
 
 #version_table, db_table = get_compara_versions()

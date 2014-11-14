@@ -1,15 +1,15 @@
 from zipfile import ZipFile, ZIP_DEFLATED
 from sys import exit
-import datetime
 import tempfile
 import os
 import logging
 import threading
+import time
+import json
 
 import glutton
-from glutton.xmlparser import GluttonXMLManifest, GluttonXMLData, GluttonXMLMapping
-from glutton.ensembl import EnsemblDownloader, SQLQueryError
-from glutton.genefamily import ensembl_to_glutton_internal, Gene, GeneFamily, read_alignment_as_genefamily
+from glutton.ensembl_downloader import EnsemblDownloader, EnsemblDownloadError, get_ensembl_download_method
+from glutton.genefamily import ensembl_to_glutton, glutton_to_json, json_to_glutton, Gene, GeneFamily, read_alignment_as_genefamily
 from glutton.utils import tmpfile, get_log, md5
 from glutton.queue import WorkQueue
 from glutton.job import PrankJob
@@ -33,21 +33,20 @@ metadata_keys = [
     'species-release',
     'download-time',
     'data-file',
-#    'mapping-file',
-#    'is-complete'
+    'nucleotide'
   ]
+
+MANIFEST_FNAME = 'manifest.json'
 
 class GluttonDB(object) :
     def __init__(self, fname=None) :
-        self.fname = fname
+        self.fname       = fname
         self.compression = ZIP_DEFLATED
-        self.metadata = None
-        self.data = None        # dict of famid -> GeneFamily obj (list of Genes)
-#        self.mapping = None     # dict of famid -> alignment file name
-        self.seq2famid = None   # dict of geneid -> famid
-        self.q = None           # work queue if needed
-        self.dirty = False
-        self.lock = threading.Lock()
+        self.metadata    = None
+        self.data        = None     # dict of famid -> GeneFamily obj (list of Genes)
+        self.seq2famid   = None     # dict of geneid -> famid
+        self.dirty       = False
+        self.lock        = threading.Lock()
 
         self.log = get_log()
 
@@ -66,6 +65,18 @@ class GluttonDB(object) :
         return self.metadata['species-release']
 
     @property
+    def nucleotide(self) :
+        return self.metadata['nucleotide']
+
+    @property
+    def download_time(self) :
+        return self.metadata['download-time']
+
+    @property
+    def version(self) :
+        return self.metadata['glutton-version']
+
+    @property
     def filename(self) :
         return self.fname
 
@@ -74,7 +85,7 @@ class GluttonDB(object) :
         return md5(self.fname)
 
     def stop(self) :
-        if self.q :
+        if hasattr(self, "q") :
             self.q.stop()
 
     def flush(self) :
@@ -85,6 +96,8 @@ class GluttonDB(object) :
     # read data file to get seqID to gluttonID mapping
     # read mapping file to get gluttonID to file name mapping 
     def _read(self) :
+        global MANIFEST_FNAME
+
         z = ZipFile(self.fname, 'r', compression=self.compression)
     
         def _err(msg) :
@@ -94,15 +107,14 @@ class GluttonDB(object) :
         # without the manifest all is lost
         # we need this to get the names of the other
         # XML files
-        if 'manifest.xml' not in z.namelist() :
+        if MANIFEST_FNAME not in z.namelist() :
             _err('manifest not found in %s' % self.fname)
 
-        gm = GluttonXMLManifest()
-        self.metadata = gm.read(z.open('manifest.xml'))
+        self.metadata = json.load(z.open(MANIFEST_FNAME))
         
         self.log.info("read manifest - created on %s using glutton version %.1f" % \
-            (self.metadata['download-time'].strftime('%d/%m/%y at %H:%M:%S'), \
-             self.metadata['glutton-version']))
+            (time.strftime('%d/%m/%y at %H:%M:%S', time.localtime(self.download_time)), \
+             self.version))
 
         # the data file is the raw data grouped into gene families
         # when we do a local alignment we need to get the gene id
@@ -110,27 +122,10 @@ class GluttonDB(object) :
         if self.metadata['data-file'] not in z.namelist() :
             _err('data file (%s) not found in %s' % (self.metadata['data-file'], self.fname))
 
-        gd = GluttonXMLData()
-        self.data = gd.read(z.open(self.metadata['data-file']))
+        self.data = json_to_glutton(json.load(z.open(self.metadata['data-file'])))
         self.seq2famid = self._create_lookup_table(self.data)
 
         self.log.info("read %d gene families (%d genes)" % (len(self.data), len(self.seq2famid)))
-
-        # we need the file mapping between gene family ids
-        # and the files output by prank
-#        if self.metadata['mapping-file'] not in z.namelist() :
-#            _err('map file (%s) not found in %s' % (self.metadata['mapping-file'], self.fname))
-#
-#        gx = GluttonXMLMapping()
-#        self.mapping = gx.read(z.open(self.metadata['mapping-file']))
-#
-#        self.log.info("read %d gene family to file mappings" % len(self.mapping))
-
-        # XXX
-#        print "\n\n"
-#        for i in z.namelist() :
-#            print i
-#        print "\n\n"
 
         z.close()
 
@@ -150,41 +145,39 @@ class GluttonDB(object) :
         
         return True
 
-    def _write_to_archive(self, writer, data, zfile, zname) :
+    def _write_to_archive(self, data, zfile, zname) :
         fname = tmpfile()
 
         f = open(fname, 'w')
-        writer.write(f, data)
+        f.write(json.dumps(data))
         f.close()
 
         zfile.write(fname, arcname=zname)
         os.remove(fname)
 
     def _write(self) :
+        global MANIFEST_FNAME
+
         assert self._valid_manifest(self.metadata)
 
         z = ZipFile(self.fname, 'a', compression=self.compression)
 
-        self._write_to_archive(GluttonXMLManifest(), self.metadata, z, 'manifest.xml')
-        self._write_to_archive(GluttonXMLData(),     self.data,     z, self.metadata['data-file'])
-#        self._write_to_archive(GluttonXMLMapping(),  self.mapping,  z, self.metadata['mapping-file'])
+        self._write_to_archive(self.metadata,               z, MANIFEST_FNAME)
+        self._write_to_archive(glutton_to_json(self.data),  z, self.metadata['data-file'])
 
         z.close()
 
         self.dirty = False
 
     def _default_datafile(self, species, release) :
-        return "%s_%d_data.xml" % (species, release)
+        return "%s_%d_data.json" % (species, release)
 
-    def _default_mappingfile(self, species, release) :
-        return "%s_%d_mapping.xml" % (species, release)
-
-    def build(self, fname, species, release=None) :
+    def build(self, fname, species, release=None, nucleotide=False, download_only=False) :
         self.fname = fname
 
         # release not specified
         if not release :
-            self.log.info("release not provided, getting: latest release...")
+            self.log.info("release not provided, getting latest release...")
             release = EnsemblDownloader().get_latest_release(species)
 
         # default name if it was not defined
@@ -194,17 +187,22 @@ class GluttonDB(object) :
 
         # are we resuming or starting fresh?
         if not os.path.exists(self.fname) :
-            self.log.info("'%s' does not exist, creating..." % self.fname)
-            self._initialise_db(species, release)
+            self.log.info("%s does not exist, starting from scratch..." % self.fname)
+            self._initialise_db(species, release, nucleotide)
         else :
-            self.log.info("'%s' exists, resuming..." % self.fname)
+            self.log.info("%s exists, resuming..." % self.fname)
 
         # either way, we contents into memory
         self._read()
 
         # no work to do
         if self.is_complete() : 
-            self.log.info("'%s' is already complete!" % self.fname)
+            self.log.info("%s is already complete!" % self.fname)
+            return
+
+        # don't do the analysis, just exit
+        if download_only :
+            self.log.info("download complete")
             return
 
         # build db
@@ -234,7 +232,7 @@ class GluttonDB(object) :
     def _perform_alignments(self) :
         unaligned = self._get_unaligned_families()
 
-        if not self.q :
+        if not hasattr(self, "q") :
             self.q = WorkQueue()
 
         for i in unaligned :
@@ -244,22 +242,20 @@ class GluttonDB(object) :
 
         self.q.join()
 
-    def _initialise_db(self, species, release) :
+    def _initialise_db(self, species, release, nucleotide) :
         e = EnsemblDownloader()
         self.log.info("downloading %s/%d" % (species, release))
         
         try :
-            self.data = ensembl_to_glutton_internal(e.download(species, release))
+            self.data = ensembl_to_glutton(e.download(species, release, nucleotide))
 
-        except SQLQueryError, sql :
-            self.log.fatal(sql.message)
+        except EnsemblDownloadError, ede :
+            self.log.fatal(ede.message)
             exit(1)
 
 
-        self.log.info("writing sequences and manifest to %s ..." % (self.fname))
-
         self.metadata = {}
-        self.metadata['download-time'] = datetime.datetime.today()
+        self.metadata['download-time']      = time.time()
 
         # glutton metadata
         self.metadata['glutton-version']    = glutton.__version__
@@ -267,19 +263,12 @@ class GluttonDB(object) :
         self.metadata['program-version']    = Prank().version
         self.metadata['species-name']       = species
         self.metadata['species-release']    = release
+        self.metadata['nucleotide']         = nucleotide
+        self.metadata['download-method']    = get_ensembl_download_method()
 
         # other xml files
         self.metadata['data-file']          = self._default_datafile(species, release)
-#        self.metadata['mapping-file']       = self._default_mappingfile(species, release)
-#
-#        # there is no work to do for families with only a single
-#        # gene, so make a note in the file mapping index        
-#        self.mapping = {}
-#
-#        for i in self.data :
-#            if len(self.data[i]) < 2 :
-#                self.mapping[i] = 'none'
-
+        
         self.dirty = True
         self._write()
 
@@ -369,18 +358,28 @@ class GluttonDB(object) :
     def is_complete(self) :
         return self.sanity_check(suppress_errmsg=True)
 
-    def sanity_check(self, suppress_errmsg=False) :
+    def sanity_check(self, suppress_errmsg=False, human_readable_summary=False) :
         z = ZipFile(self.fname, 'r')
         listing = z.namelist()
         z.close()
 
         insane = False
 
+        summary = {
+            'num_single_genes'  : 0,
+            'error_empty'       : 0,
+            'error_noalignment' : 0,
+            'error_notree'      : 0,
+            'error_nofiles'     : 0
+        }
+
         for famid in self.data :
             gf_size = len(self.data[famid])
 
             # err
             if gf_size == 0 :
+                summary['error_empty'] += 1
+
                 if not suppress_errmsg :
                     self.log.error("%s contains no genes!" % famid)
                 
@@ -389,24 +388,50 @@ class GluttonDB(object) :
 
             # no extra files
             elif gf_size == 1 :
+                summary['num_single_genes'] += 1
                 continue
 
             # .align + .tree expected
             else :
                 alignment_fname = self._famid_to_alignment(famid)
                 tree_fname = self._famid_to_tree(famid)
+
+                if alignment_fname not in listing :
+                    insane = True
+                    summary['error_noalignment'] += 1
+                    if not suppress_errmsg :
+                        self.log.error("%s not found" % alignment_fname)
+
+                if tree_fname not in listing :
+                    insane = True
+                    summary['error_notree'] += 1
+                    if not suppress_errmsg :
+                        self.log.error("%s not found" % tree_fname)
                 
-                for fname in [ self._famid_to_alignment(famid), self._famid_to_tree(famid) ] :
-                    if fname not in listing :
-                        if not suppress_errmsg :
-                            self.log.error("%s not found" % fname)
-                        
-                        insane = True
+                if (alignment_fname not in listing) and (tree_fname not in listing) :
+                    summary['error_nofiles'] += 1
 
         if insane :
             if not suppress_errmsg :
                 self.log.error("%s failed check" % self.fname)
                 exit(1)
+
+        if human_readable_summary :
+            print "Filename:", self.fname
+            print ""
+            print "Species:", self.species
+            print "Release:", self.release
+            print "Type:", "nucleotide" if self.nucleotide else "protein"
+            print "Downloaded:", time.strftime('%d/%m/%y at %H:%M:%S', time.localtime(self.download_time))
+            print "Checksum:", self.checksum
+            print ""
+            print "Number of gene families:", len(self.data)
+            print "Families containing multiple genes:", len(self.data) - summary['num_single_genes']
+            print "Missing alignments:", summary['error_noalignment']
+            print "Missing phylogenetic trees:", summary['error_notree']
+            print ""
+            print "FAIL!" if insane else "OK!"
+            print ""
 
         return not insane
 

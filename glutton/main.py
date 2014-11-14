@@ -11,7 +11,8 @@ import glutton
 import glutton.subcommands
 
 from glutton.utils import tmpdir, set_threads, num_threads, set_tmpdir, set_verbosity, setup_logging, get_log, duration_str
-from glutton.ensembl import custom_database
+from glutton.ensembl_sql import custom_database
+from glutton.ensembl_downloader import set_ensembl_download_method
 
 
 commands = {
@@ -74,6 +75,7 @@ def handle_args(args) :
     subparsers = parser.add_subparsers(help='subcommands')
 
     ensembl_db = ('ensembl', 'metazoa', 'fungi', 'protists', 'plants', 'bacteria')
+    ensembl_methods = ('sql', 'biomart', 'pycogent')
 
     # list options
     parser_list = subparsers.add_parser('list', formatter_class=fmt,
@@ -81,10 +83,13 @@ def handle_args(args) :
     parser_list.add_argument('-v', '--verbose',  action='count', default=0,   
                              help='set verbosity, can be set multiple times e.g.: -vvv')
     parser_list.add_argument('-d', '--database-name', default='ensembl', metavar='DB', choices=ensembl_db,
-    help='specify main ensembl database or one of the ensembl-genomes databases, options are %s' % ', '.join(ensembl_db))
+                             help='specify main ensembl database or one of the ensembl-genomes databases, options are %s' % ', '.join(ensembl_db))
+    parser_list.add_argument('-m', '--download-method', default='biomart', metavar='METHOD', choices=ensembl_methods,
+                             help='specific download method, options are %s' % ', '.join(ensembl_methods))
     parser_list.add_argument('--suppress', type=int,
                              help='suppress older releases (default depends on database)')
     add_database_options(parser_list)
+
 
     # build options
     parser_build = subparsers.add_parser('build', formatter_class=fmt,
@@ -95,6 +100,12 @@ def handle_args(args) :
                               help='ensembl release number (default: the latest release)')
     parser_build.add_argument('-o', '--output',  type=str, 
                               help='output filename (default: SPECIES_RELEASE.glt)')
+    parser_build.add_argument('-p', '--protein', action='store_true',
+                              help='download protein sequences instead of cDNA sequences')
+    parser_build.add_argument('--download-only', action='store_true',
+                              help='download sequences and homology information, then exit')
+    parser_build.add_argument('-m', '--download-method', default='biomart', metavar='METHOD', choices=ensembl_methods,
+                             help='specific download method, options are %s' % ', '.join(ensembl_methods))
 
     add_database_options(parser_build)
     add_generic_options(parser_build)
@@ -121,7 +132,7 @@ def handle_args(args) :
     parser_align.add_argument('-l', '--length', type=check_non_negative, default=200,
                               help='minimum contig length')
     parser_align.add_argument('-b', '--batch-size', type=check_greater_than_zero, default=100,
-                              help='batch size for number of queries for local alignment')
+                              help='number of queries per batch for local alignment')
 
     add_generic_options(parser_align)
 
@@ -163,6 +174,10 @@ def generic_options(args) :
     # verbosity
     if hasattr(args, 'verbose') :
         set_verbosity(args.verbose)
+
+    # ensembl download method
+    if hasattr(args, 'download_method') :
+        set_ensembl_download_method(args.download_method)
 
     setup_logging()
 

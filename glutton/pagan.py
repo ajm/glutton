@@ -37,8 +37,9 @@ class Pagan(ExternalTool) :
         if tree_fname :
             parameters.append("--ref-treefile")
             parameters.append(tree_fname)
-        else :
-            parameters.append("--pileup-alignment")
+        # unnecessary (see email 27/11/13 from ari)
+        #else :
+        #    parameters.append("--pileup-alignment")
 
         self.alignment_fname = out_fname + '.fas'
 

@@ -24,8 +24,8 @@ class Blastx(ExternalTool) :
         raise ExternalToolError('could not get version of blastx')
     
     @staticmethod
-    def makedb(db_fname) :
-        c = ["makeblastdb", "-in", db_fname, "-dbtype", "prot"]
+    def makedb(db_fname, nucleotide) :
+        c = ["makeblastdb", "-in", db_fname, "-dbtype", "nucl" if nucleotide else "prot"]
 
         try :
             get_log().debug(" ".join(c))

@@ -38,7 +38,7 @@ class GluttonInformation(object) :
         check_dir(self.directory)
 
         self.log = get_log()
-        self.lock = threading.Lock()
+        self.lock = threading.RLock() # a single call requires this be an RLock over a Lock
 
         # the alignment procedure can take a long time, so everything needs to be 
         # restartable, in addition - if we restart it then we need to be sure that 
@@ -157,17 +157,9 @@ class GluttonInformation(object) :
                 return True
         return False
 
-    # contig to query ids are only put/get
-    #   initialised?/put/get
-    def initialised_contig2query(self) :
-        return self.contig2query == {}
-
+    # contig to query ids are only get
     @do_locking
-    def put_contig2query(self, contig_id, query_id) :
-        self.contig_query_map[contig_id] = query_id
-
-    @do_locking
-    def get_contig2query(self, contig_id) :
+    def get_query_from_contig(self, contig_id) :
         global QUERY_ID
 
         try :
@@ -190,21 +182,10 @@ class GluttonInformation(object) :
         return new_query_id
 
     # query id to gene id
-    #   get/update/in
-    def get_query2gene(self, query_id) :
-        return self.query_gene_map[query_id]
-
-    def iter_query2gene(self) :
-        for i in self.query_gene_map :
-            if self.query_gene_map[i] != 'FAIL' :
-                yield i
-
+    #   update
     @do_locking
-    def update_query2gene(self, new_dict) :
+    def update_query_gene_mapping(self, new_dict) :
         self.query_gene_map.update(new_dict)
-
-    def in_query2gene(self, query_id) :
-        return query_id in self.query_gene_map
 
     # genefamily id to filename or FAIL
     #   put/get/fail/in
@@ -221,6 +202,9 @@ class GluttonInformation(object) :
     def len_genefamily2filename(self) :
         return len(self.genefamily_filename_map)
 
+    # aggregate actions
+    #
+    @do_locking
     def build_genefamily2contigs(self) :
         genefamily_contig_map = collections.defaultdict(list)
 
@@ -232,11 +216,11 @@ class GluttonInformation(object) :
         
         return genefamily_contig_map
 
-    # aggregate actions
-    # 
+    @do_locking
     def pending_queries(self) :
         return [ i for i in self.contig_query_map.values() if i not in self.query_gene_map ]
 
+    @do_locking
     def alignments_complete(self) :
         genefamily_contig_map = self.build_genefamily2contigs()
 
@@ -245,6 +229,37 @@ class GluttonInformation(object) :
                 return False
 
         return True
+
+    # functions used by scaffolder
+    #
+    @do_locking
+    def contig_used(self, contig_id) :
+        return contig_id in self.contig_query_map
+
+    @do_locking
+    def contig_assigned(self, contig_id) :
+        qid = self.contig_query_map[contig_id]
+
+        return self.query_gene_map[qid] != 'FAIL'
+
+    @do_locking
+    def contig_aligned(self, contig_id) :
+        qid = self.contig_query_map[contig_id]
+        gid = self.query_gene_map[qid]
+        gfid = self.db.get_genefamily_from_gene(gid)
+        
+        return self.genefamily_filename_map[gfid] != 'FAIL'
+
+    @do_locking
+    def get_contig_from_query(self, query_id) :
+        # lazy reverse lookup
+        if not hasattr(self, 'query_contig_map') :
+            self.query_contig_map = dict([ (q,c) for c,q in self.contig_query_map.items() ])
+
+        if isinstance(query_id, list) :
+            return [ self.query_contig_map[i] for i in query_id ]
+
+        return self.query_contig_map[query_id]
 
 if __name__ == '__main__' :
     

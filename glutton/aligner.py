@@ -43,7 +43,7 @@ class Aligner(object) :
                 rejected += 1
                 continue
 
-            qid = self.info.get_contig2query(r.id)
+            qid = self.info.get_query_from_contig(r.id)
             
             contigs[qid] = biopy_to_gene(r, qid)
             accepted += 1
@@ -55,7 +55,7 @@ class Aligner(object) :
 
     def stop(self) :
         self.search.stop()
-        self.info.update_query2gene(self.search.get_intermediate_results())
+        self.info.update_query_gene_mapping(self.search.get_intermediate_results())
         
         rm_f(self.cleanup_files)
 
@@ -83,10 +83,11 @@ class Aligner(object) :
 
             # do an all vs all search of contigs vs database of transcripts
             # return a dict of tmp ids with gene ids
-            self.info.update_query2gene(
+            self.info.update_query_gene_mapping(
                 self.search.process(
                     db_fname, 
                     pending_contigs,
+                    self.db.nucleotide,
                     self.min_identity, 
                     self.min_length / 3)
                 )

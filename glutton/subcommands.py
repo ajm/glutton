@@ -3,7 +3,7 @@ import os
 import signal
 
 from glutton.utils import get_log
-from glutton.ensembl import EnsemblDownloader, SQLQueryError
+from glutton.ensembl_downloader import EnsemblDownloader
 from glutton.table import pretty_print_table
 from glutton.db import GluttonDB
 from glutton.aligner import Aligner
@@ -15,11 +15,11 @@ def list_command(args) :
     e = EnsemblDownloader()
 
     suppression_defaults = {
-            'ensembl'   : 60,
-            'metazoa'   : 18,
-            'protists'  : 18,
-            'plants'    : 18,
-            'bacteria'  : 18,
+            'ensembl'   : 70, # errors with 69 and older (missing columns)
+            'metazoa'   : 17,
+            'protists'  : 17,
+            'plants'    : 17,
+            'bacteria'  : 17,
         }
 
     if not args.suppress :
@@ -31,10 +31,11 @@ def list_command(args) :
     try :
         pretty_print_table(
             ('Species name', 'Releases available'), 
-            e.get_all_species(db=args.database_name, suppress=args.suppress))
+            e.get_all_species(db=args.database_name, 
+                              suppress=args.suppress))
 
-    except SQLQueryError, sql :
-        log.fatal(str(sql))
+    except EnsemblDownloadError, ede :
+        log.fatal(ede.message)
         exit(1)
 
     return 0
@@ -51,19 +52,18 @@ def build_command(args) :
 
     signal.signal(signal.SIGINT, _cleanup)
 
-    gdb.build(args.output, args.species, args.release)
+    gdb.build(args.output, 
+              args.species, 
+              args.release, 
+              not args.protein, 
+              args.download_only)
 
     log.info("built database %s" % gdb.filename)
     
     return 0
 
 def check_command(args) :
-    if GluttonDB(args.gltfile).sanity_check() :
-        print "OK!"
-        return 0
-
-    print "FAIL!"
-    return 1
+    return 0 if GluttonDB(args.gltfile).sanity_check(human_readable_summary=True, suppress_errmsg=True) else 1        
 
 def align_command(args) :
     gdb = GluttonDB(args.reference)

@@ -81,12 +81,40 @@ def read_alignment_as_genefamily(f, name) :
 # these objects, this function converts what it returns
 #   i.e.: [(name, seq),(name, seq), ... ]
 # to gene and genefamily objects
-def ensembl_to_glutton_internal(families) :
+def ensembl_to_glutton(families) :
     tmp = {}
     
     for fam in families :
         gf = GeneFamily([ Gene(g[0], g[1]) for g in fam ])
         tmp[gf.id] = gf
     
+    return tmp
+
+#{
+#   fam1 :  {
+#           gene1 : (name, seq)
+#           },
+#   fam2 :  {
+#           gene2 : (name, seq),
+#           gene3 : (name, seq)
+#           }
+#}
+def glutton_to_json(families) :
+    tmp = {}
+
+    for famid in families :
+        tmp[famid] = {}
+
+        for gene in families[famid] :
+            tmp[famid][gene.id] = (gene.name, gene.seq)
+
+    return tmp
+
+def json_to_glutton(families) :
+    tmp = {}
+
+    for famid in families :
+        tmp[famid] = GeneFamily([ Gene(*families[famid][geneid], id=geneid) for geneid in families[famid] ], id=famid)
+
     return tmp
 

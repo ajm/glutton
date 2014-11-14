@@ -32,7 +32,7 @@ class All_vs_all_search(object) :
 
         yield tmp
 
-    def process(self, db, queries, min_identity, min_alignment_length) :
+    def process(self, db, queries, nucleotide, min_identity, min_alignment_length) :
         self.min_identity = 100 * min_identity
         self.min_length = min_alignment_length
 
@@ -42,7 +42,7 @@ class All_vs_all_search(object) :
 
         # creates db + {phr,pin,psq} in same dir as db
         self.log.info("creating blast db...")
-        Blastx.makedb(db)
+        Blastx.makedb(db, nucleotide)
 
         self.log.info("starting local alignments...")
         self.q = WorkQueue()
