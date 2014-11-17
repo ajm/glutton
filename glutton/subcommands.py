@@ -3,9 +3,9 @@ import os
 import signal
 
 from glutton.utils import get_log
-from glutton.ensembl_downloader import EnsemblDownloader
+from glutton.ensembl_downloader import EnsemblDownloader, EnsemblDownloadError
 from glutton.table import pretty_print_table
-from glutton.db import GluttonDB
+from glutton.db import GluttonDB, GluttonDBBuildError
 from glutton.aligner import Aligner
 from glutton.scaffolder import Scaffolder
 
@@ -30,7 +30,7 @@ def list_command(args) :
 
     try :
         pretty_print_table(
-            ('Species name', 'Releases available'), 
+            ('Species name', 'Releases'), 
             e.get_all_species(db=args.database_name, 
                               suppress=args.suppress))
 
@@ -52,11 +52,17 @@ def build_command(args) :
 
     signal.signal(signal.SIGINT, _cleanup)
 
-    gdb.build(args.output, 
+    try :
+        gdb.build(args.output, 
               args.species, 
               args.release, 
+              args.database_name,
               not args.protein, 
               args.download_only)
+
+    except GluttonDBBuildError, nmgfe :
+        log.fatal(nmgfe.message)
+        exit(1)
 
     log.info("built database %s" % gdb.filename)
     

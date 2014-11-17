@@ -12,10 +12,14 @@ from glutton.utils import get_log
 TIMEOUT = 30
 URL = 'http://www.biomart.org/biomart/martservice'
 
-def get_marts() :
+def get_marts(database_name=None) :
     global TIMEOUT, URL
 
-    marts = {   'ensembl'   : None,
+    if database_name :
+        marts = { database_name : None }
+    else :
+        marts = {   
+                'ensembl'   : None,
                 'metazoa'   : None,
                 'plants'    : None,
                 'protists'  : None,
@@ -37,21 +41,24 @@ def get_marts() :
         db_display =    ele.attributes["displayName"].value
         mart_name =     ele.attributes["name"].value
 
+        log.debug("%s %s %s" % (db_name, db_display, mart_name))
+
+        # this messes things up
+        if mart_name == 'ENSEMBL_MART_PLANT' :
+            continue
+
         for k in marts :
             if db_name.startswith(k + '_mart_') :
-                marts[k] = mart_name
+                marts[k] = (mart_name, int(db_name.split('_')[-1]))
                 break
 
 
     return marts
 
-def guess_latest_release(mart_name) :
-    return int(mart_name.split('_')[-1])
-
-def get_latest_release_biomart(species) :
-    mart_name, db_name, species_desc = get_all_species(get_marts())[species]
+def get_latest_release_biomart(species, database_name) :
+    mart_name, release, db_name, species_desc = get_all_species(get_marts(database_name))[species]
     
-    return guess_latest_release(mart_name)
+    return release
 
 def get_all_species(marts) :
     global TIMEOUT, URL
@@ -62,13 +69,13 @@ def get_all_species(marts) :
     log = get_log()
 
     for k in marts :
-        #print k
-
         if not marts[k] :
             continue
 
+        mart_name,release = marts[k]
+
         try :
-            f = urllib2.urlopen(query % marts[k], timeout=TIMEOUT)
+            f = urllib2.urlopen(query % mart_name, timeout=TIMEOUT)
 
         except urllib2.URLError, ue :
             log.fatal("biomart dataset listing timed out")
@@ -89,9 +96,7 @@ def get_all_species(marts) :
             else :
                 species_name = db_name.split('_')[0]
 
-            species[species_name] = (marts[k], db_name, description)
-
-            #print "\t", species_name
+            species[species_name] = (mart_name, release, db_name, description)
 
         f.close()
 
@@ -104,18 +109,16 @@ def get_all_species_biomart(db, suppress) :
         get_log().fatal('internal error, multiple marts found for database (%s)' % db)
         exit(1)
 
-    return [ (i, 'latest only') for i in get_all_species(marts).keys() ]
+    return [ (i, str(j[1])) for i,j in get_all_species(marts).items() ]
 
 # check release is the most recent one and raise 
 # a ReleaseNotFoundException if it is not the most recent one
-def download_database_biomart(species, release, nucleotide=True) :
-    # e.g. 'dipodomys_ordii': ('dordii_gene_ensembl', 'Dipodomys ordii genes (dipOrd1)')
-    #
-    mart_name, db_name, species_desc = get_all_species(get_marts())[species]
+def download_database_biomart(species, release, database_name='ensembl', nucleotide=True) :
+    
+    mart_name, mart_release, db_name, species_desc = get_all_species(get_marts(database_name))[species]
 
-    biomart_release = guess_latest_release(mart_name)
-    if biomart_release != release :
-        get_log().fatal("requested release (%d) does not match current biomart release (%d)" % (release, biomart_release))
+    if mart_release != release :
+        get_log().fatal("requested release (%d) does not match current biomart release (%d)" % (release, mart_release))
         exit(1)
 
     seq = get_sequences(species, db_name, nucleotide)

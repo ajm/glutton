@@ -35,46 +35,48 @@ class EnsemblDownloader(object) :
     # XXX   i don't want the calling code to do this anymore, I want it to be handled by
     #       the download code if Release is None
 
-    def get_latest_release(self, species) :
+    def get_latest_release(self, species, database_name) :
         if self.method in ('sql', 'pycogent') :
-            return get_latest_release_sql(species)
+            return get_latest_release_sql(species, database_name)
 
         elif self.method == 'biomart' :
-            return get_latest_release_biomart(species)
+            return get_latest_release_biomart(species, database_name)
 
         else :
             self.log.fatal("%s not a valid download method" % method)
             exit(1)
 
     def get_all_species(self, db="", suppress=None) :
-
-        if self.method == 'biomart' :
-            tmp = get_all_species_biomart(db, suppress)
-        
-        elif self.method == 'sql' :
-            tmp = get_all_species_sql(db, suppress)
-        
-        elif self.method == 'pycogent' :
-            tmp = get_all_species_pycogent(db, suppress)
-        
-        else :
-            self.log.fatal("%s not a valid download method" % method)
-            exit(1)
-
-
-        return sorted(tmp)
-
-    # returns peptide sequences + homologies
-    def download(self, species, release=None, nucleotide=False, slow=False) :
         try :
             if self.method == 'biomart' :
-                return download_database_biomart(species, release, nucleotide)
+                return sorted(get_all_species_biomart(db, suppress))
+        
+            elif self.method == 'sql' :
+                return sorted(get_all_species_sql(db, suppress))
+        
+            elif self.method == 'pycogent' :
+                return sorted(get_all_species_pycogent(db, suppress))
+        
+            else :
+                raise EnsemblDownloadError("%s is not a valid download method" % self.method)
+
+        except SQLQueryError, sql :
+            raise EnsemblDownloadError(' '.join(sql.message.replace('\\n', '').split()))
+
+        except Exception, e :
+            raise EnsemblDownloadError(e.message + " (" + self.method + ")")
+
+    # returns peptide sequences + homologies
+    def download(self, species, release=None, database_name='ensembl', nucleotide=False) :
+        try :
+            if self.method == 'biomart' :
+                return download_database_biomart(species, release, database_name, nucleotide)
 
             elif self.method == 'sql' :
-                return download_database_sql(species, release, nucleotide)
+                return download_database_sql(species, release, database_name, nucleotide)
 
             elif self.method == 'pycogent' :
-                return download_database_pycogent(species, release, nucleotide)
+                return download_database_pycogent(species, release, database_name, nucleotide)
 
             else :
                 raise EnsemblDownloadError("%s is not a valid download method" % self.method)
@@ -85,8 +87,8 @@ class EnsemblDownloader(object) :
         except SQLQueryError, sql :
             raise EnsemblDownloadError(' '.join(sql.message.replace('\\n', '').split()))
 
-        except NoResultsError :
-            raise EnsemblDownloadError("no results returned from database")
+        except NoResultsError, nre :
+            raise EnsemblDownloadError(nre.message)
 
 #        except UnsupportedError, ue :
 #            raise EnsemblDownloadError(ue.message)

@@ -4,13 +4,13 @@ from glutton.utils import get_log
 from glutton.ensembl_sql import ensembl_sql_hosts, get_latest_release_sql, find_database_for_species
 
 
-def get_missing_info(species, release) :
+def get_missing_info(species, release, database_name) :
     global ensembl_sql_hosts
 
     if not release :
         release = get_latest_release_sql(species)
 
-    genome_db_id, db_host, db_name = find_database_for_species(species, release)
+    genome_db_id, db_host, db_name = find_database_for_species(species, release, database_name)
 
     project_name = 'ensembl'
     for i in ('metazoa', 'bacteria', 'fungi', 'protists', 'plants') :
@@ -39,7 +39,7 @@ def get_all_species_pycogent(db, suppress) :
     return [ (i.split()[-1], 'unknown') for i in str(Species).split('\n')[3:-1] ]
 
 # db_name has to be one of (metazoa, protists, plants, bacteria) or empty string for ensembl main
-def download_database_pycogent(species, release, nucleotide=False) :
+def download_database_pycogent(species, release, database_name='ensembl', nucleotide=False) :
     log = get_log()
 
     try :
@@ -55,7 +55,7 @@ def download_database_pycogent(species, release, nucleotide=False) :
         log.warning("only tested with pycogent version 1.5.3 (you are running %s)" % cogent.version)
 
 
-    release, db_name, db_details = get_missing_info(species, release)
+    release, db_name, db_details = get_missing_info(species, release, database_name)
 
     account = HostAccount(
                 db_details['hostname'],
@@ -80,7 +80,7 @@ def download_database_pycogent(species, release, nucleotide=False) :
     # to the correct database ... obviously not the best solution, but at 6 lines of code definitely
     # the shortest ;-P
     #
-    if db_name not in ('main', 'bacteria') :
+    if db_name not in ('ensembl', 'bacteria') :
         log.warning("accessing compara from pycogent with species outside of ensembl-main and ensembl-bacteria is problematic, attempting to patch...")
 
         from cogent.db.ensembl.host import DbConnection

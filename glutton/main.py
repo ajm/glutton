@@ -44,6 +44,10 @@ def handle_args(args) :
                          help='show version')
 
     def add_database_options(par) :
+        ensembl_db = ('ensembl', 'metazoa', 'fungi', 'protists', 'plants', 'bacteria')
+
+        par.add_argument('-d', '--database-name', default='ensembl', metavar='DB', choices=ensembl_db,
+                         help='specify main ensembl database or one of the ensembl-genomes databases, options are %s' % ', '.join(ensembl_db))
         par.add_argument('--database-host', type=str, 
                          help='specify database hostname')
         par.add_argument('--database-port', type=int, default=3306, 
@@ -74,7 +78,6 @@ def handle_args(args) :
 
     subparsers = parser.add_subparsers(help='subcommands')
 
-    ensembl_db = ('ensembl', 'metazoa', 'fungi', 'protists', 'plants', 'bacteria')
     ensembl_methods = ('sql', 'biomart', 'pycogent')
 
     # list options
@@ -82,8 +85,6 @@ def handle_args(args) :
                              help='list ensembl species')
     parser_list.add_argument('-v', '--verbose',  action='count', default=0,   
                              help='set verbosity, can be set multiple times e.g.: -vvv')
-    parser_list.add_argument('-d', '--database-name', default='ensembl', metavar='DB', choices=ensembl_db,
-                             help='specify main ensembl database or one of the ensembl-genomes databases, options are %s' % ', '.join(ensembl_db))
     parser_list.add_argument('-m', '--download-method', default='biomart', metavar='METHOD', choices=ensembl_methods,
                              help='specific download method, options are %s' % ', '.join(ensembl_methods))
     parser_list.add_argument('--suppress', type=int,

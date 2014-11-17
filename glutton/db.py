@@ -25,6 +25,9 @@ class GluttonDBFileError(Exception) :
 class GluttonDBError(Exception) :
     pass
 
+class GluttonDBBuildError(Exception) :
+    pass
+
 metadata_keys = [
     'glutton-version',
     'program-name',
@@ -33,7 +36,8 @@ metadata_keys = [
     'species-release',
     'download-time',
     'data-file',
-    'nucleotide'
+    'nucleotide',
+    'database-name'
   ]
 
 MANIFEST_FNAME = 'manifest.json'
@@ -75,6 +79,10 @@ class GluttonDB(object) :
     @property
     def version(self) :
         return self.metadata['glutton-version']
+
+    @property
+    def database(self) :
+        return self.metadata['database-name']
 
     @property
     def filename(self) :
@@ -172,13 +180,13 @@ class GluttonDB(object) :
     def _default_datafile(self, species, release) :
         return "%s_%d_data.json" % (species, release)
 
-    def build(self, fname, species, release=None, nucleotide=False, download_only=False) :
+    def build(self, fname, species, release=None, database_name='ensembl', nucleotide=False, download_only=False) :
         self.fname = fname
 
         # release not specified
         if not release :
             self.log.info("release not provided, getting latest release...")
-            release = EnsemblDownloader().get_latest_release(species)
+            release = EnsemblDownloader().get_latest_release(species, database_name)
 
         # default name if it was not defined
         if not self.fname :
@@ -188,7 +196,7 @@ class GluttonDB(object) :
         # are we resuming or starting fresh?
         if not os.path.exists(self.fname) :
             self.log.info("%s does not exist, starting from scratch..." % self.fname)
-            self._initialise_db(species, release, nucleotide)
+            self._initialise_db(species, release, database_name, nucleotide)
         else :
             self.log.info("%s exists, resuming..." % self.fname)
 
@@ -242,16 +250,29 @@ class GluttonDB(object) :
 
         self.q.join()
 
-    def _initialise_db(self, species, release, nucleotide) :
+    def _initialise_db(self, species, release, database_name, nucleotide) :
         e = EnsemblDownloader()
         self.log.info("downloading %s/%d" % (species, release))
         
         try :
-            self.data = ensembl_to_glutton(e.download(species, release, nucleotide))
+            self.data = ensembl_to_glutton(e.download(species, release, database_name, nucleotide))
 
         except EnsemblDownloadError, ede :
             self.log.fatal(ede.message)
             exit(1)
+
+
+
+        # drosophila melanogastor - nucleotide - ensembl-main
+        # contains transcripts, but not gene families
+        count = 0
+        for famid in self.data :
+            if len(self.data[famid]) == 1 :
+                count += 1
+        
+        if count == len(self.data) :
+            raise GluttonDBBuildError("downloaded %d gene families composed of a single gene each ('sql' method will do this on some species that do not contain all transcripts (e.g. drosophila_melanogaster in ensembl-main))" % count)
+
 
 
         self.metadata = {}
@@ -264,6 +285,7 @@ class GluttonDB(object) :
         self.metadata['species-name']       = species
         self.metadata['species-release']    = release
         self.metadata['nucleotide']         = nucleotide
+        self.metadata['database-name']      = database_name
         self.metadata['download-method']    = get_ensembl_download_method()
 
         # other xml files
@@ -421,6 +443,7 @@ class GluttonDB(object) :
             print ""
             print "Species:", self.species
             print "Release:", self.release
+            print "Database:", self.database
             print "Type:", "nucleotide" if self.nucleotide else "protein"
             print "Downloaded:", time.strftime('%d/%m/%y at %H:%M:%S', time.localtime(self.download_time))
             print "Checksum:", self.checksum

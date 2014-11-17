@@ -28,6 +28,7 @@ def pretty_print_table(headings, data) :
     for d in data :
         print fmt % tuple(d)
 
+    print ""
 
 if __name__ == '__main__' :
     from glutton.ensembl import EnsemblDownloader

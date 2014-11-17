@@ -223,7 +223,14 @@ def get_species_versions(db_name="", species=None, human_readable=True, suppress
     version_table, db_table = get_compara_versions()
     species_version_table = defaultdict(list)
 
+#    print db_table
+#    print "\n\n"
+#    print sorted(db_table, key=lambda x : x[1], reverse=True)
+#    exit(0)
+
     for db in sorted(db_table, key=lambda x : x[1], reverse=True) :
+#        print db
+        
         if not db[0].startswith(db_name) :
             continue
 
@@ -274,10 +281,20 @@ def test_species_listing() :
 #   genome_db_id - internal species identity in this version of ensembl
 #   db_host - key into ensembl_sql_hosts specifying connection information
 #   db_name - name of database table to read in compara for this species + release
-def find_database_for_species(species, release) :
+#
+# XXX
+# 
+# some species are in multiple databases, e.g. drosophila melanogaster is in both
+# ensembl-main and ensembl-metazoa, we need to make sure that the non-ensembl-main
+# one is always found first
+# 
+def find_database_for_species(species, release, database_name) :
     version_table, db_table = get_compara_versions()
 
     for db in [ (name,version) for name,version in db_table if version == release ] :
+        if not db[0].startswith(database_name) :
+            continue
+        
         species_table = get_compara_species(*db_table[db])
 
         if species in species_table :
@@ -348,9 +365,9 @@ def get_homology_information(connection, species, release, genome_db_id) :
 
     return homologies
 
-def get_latest_release_sql(species) :
+def get_latest_release_sql(species, database_name) :
     try :
-        return max(get_species_versions(species=species, human_readable=False)[species])
+        return max(get_species_versions(species=species, db_name=database_name, human_readable=False)[species])
 
     except KeyError :
         raise SpeciesNotFoundError("%s not found in any ensembl database" % species)
@@ -358,7 +375,7 @@ def get_latest_release_sql(species) :
 # download a listing of the canonical peptides and homology relations
 # for within_species_paralogs
 # e.g. tribolium_castineum, 75
-def download_database_sql(species, release=None, nucleotide=False) :
+def download_database_sql(species, release=None, database_name='ensembl', nucleotide=False) :
     global ensembl_sql_hosts
     global DEBUG
 
@@ -372,7 +389,7 @@ def download_database_sql(species, release=None, nucleotide=False) :
     if DEBUG :
         print >> stderr, "downloading %s/%d -" % (species, release),
 
-    genome_db_id, db_host, db_name = find_database_for_species(species, release)
+    genome_db_id, db_host, db_name = find_database_for_species(species, release, database_name)
 
     #print db_host, db_name
 
@@ -391,7 +408,7 @@ def download_database_sql(species, release=None, nucleotide=False) :
     homologies = get_homology_information(connection, species, release, genome_db_id)
 
     if not id2peptide or not homologies :
-        raise NoResultsError()
+        raise NoResultsError("no results returned - %s" % "nucleotide sequences are unavailable in ensembl-compara outside of most of the species in ensembl-main, use 'biomart' or 'pycogent' instead of 'sql'" if nucleotide else "maybe try again later?")
 
     return group_into_families(id2peptide, homologies)
 
