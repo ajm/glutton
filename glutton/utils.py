@@ -8,8 +8,8 @@ from sys import exit
 from multiprocessing import cpu_count
 
 
-def tmpfile(contents=None, directory=None) :
-    fd,name = tempfile.mkstemp(prefix='glutton', dir=directory)
+def tmpfile(contents=None, directory=None, suffix='') :
+    fd,name = tempfile.mkstemp(prefix='glutton', dir=directory, suffix=suffix)
     os.close(fd)
 
     if contents :
@@ -98,6 +98,29 @@ def tmpfasta(seq) :
                 print >> f, s.format('fasta').rstrip()
         else :
             print >> f, seq.format('fasta').rstrip()
+
+    return fname
+
+def _write_six_orfs(fout, seq) :
+    for i in range(3) :
+        print >> fout, ">%s\n%s" % (seq.id + '_orf' + str(i+1), seq[i:])
+
+    seq.back_translate()
+
+    for i in range(3) :
+        print >> fout, ">%s\n%s" % (seq.id + '_orf' + str(i+4), seq[i:])
+
+    seq.back_translate()
+
+def tmpfasta_orfs(seq) :
+    fname = tmpfile()
+
+    with open(fname, 'w') as f :
+        if isinstance(seq, list) :
+            for s in seq :
+                _write_six_orfs(f, s)
+        else :
+            _write_six_orfs(f, seq)
 
     return fname
 

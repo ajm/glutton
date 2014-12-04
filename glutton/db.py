@@ -1,5 +1,6 @@
 from zipfile import ZipFile, ZIP_DEFLATED
 from sys import exit
+from os.path import exists
 import tempfile
 import os
 import logging
@@ -183,25 +184,47 @@ class GluttonDB(object) :
     def build(self, fname, species, release=None, database_name='ensembl', nucleotide=False, download_only=False) :
         self.fname = fname
 
-        # release not specified
-        if not release :
-            self.log.info("release not provided, getting latest release...")
-            release = EnsemblDownloader().get_latest_release(species, database_name)
-
-        # default name if it was not defined
-        if not self.fname :
-            self.fname = "%s_%d.glt" % (species, release)
-            self.log.info("database filename not specified, using '%s'" % self.fname)
-
-        # are we resuming or starting fresh?
-        if not os.path.exists(self.fname) :
-            self.log.info("%s does not exist, starting from scratch..." % self.fname)
-            self._initialise_db(species, release, database_name, nucleotide)
-        else :
+        # if the name is specified and the file exists, then that means the 
+        # download already took place and we should get:
+        #   - database_name
+        #   - release
+        # from the metadata
+        if self.fname and exists(self.fname) :
             self.log.info("%s exists, resuming..." % self.fname)
+       
+        else :
+            # release not specified
+            if not release :
+                    self.log.info("release not provided, getting latest release...")
+                    release = EnsemblDownloader().get_latest_release(species, database_name)
+                    self.log.info("latest release is %d" % release) 
+
+            # default name if it was not defined
+            if not self.fname :
+                self.fname = "%s_%d_%s_%s.glt" % (species, release, "nuc" if nucleotide else "pep", get_ensembl_download_method())
+                self.log.info("database filename not specified, using '%s'" % self.fname)
+
+            # are we resuming or starting fresh?
+            if not exists(self.fname) :
+                self.log.info("%s does not exist, starting from scratch..." % self.fname)
+                self._initialise_db(species, release, database_name, nucleotide)
 
         # either way, we contents into memory
         self._read()
+
+
+        # not really necessary, but check that the species from cli and in the file
+        # are the same + nucleotide
+        if self.species != species :
+            self.log.warn("species from CLI (%s) and glutton file (%s) do not match!" % (species, self.species))
+
+        if release and (self.release != release) :
+            self.log.warn("release from CLI (%d) and glutton file (%d) do not match!" % (release, self.release))
+
+        if self.nucleotide != nucleotide :
+            self.log.warn("nucleotide/protein from CLI (%s) and glutton file (%s) do not match!" % \
+                ("nucleotide" if nucleotide else "protein", "nucleotide" if self.nucleotide else "protein"))
+
 
         # no work to do
         if self.is_complete() : 
@@ -219,8 +242,7 @@ class GluttonDB(object) :
         # write to disk
         self._write()
 
-        self.log.info("finished building %s/%s" % \
-            (self.metadata['species-name'], self.metadata['species-release']))
+        self.log.info("finished building %s/%s" % (self.species, self.release))
 
     def _get_unaligned_families(self) :
         unaligned = []
@@ -295,12 +317,9 @@ class GluttonDB(object) :
         self._write()
 
     def job_callback(self, job) :
-        self.log.debug("callback from %s - %s" % (str(job),job.input.id))
+        self.log.debug("callback from %s - %s" % (str(job), job.input.id))
         self.log.debug("alignment file = %s" % job.alignment)
         self.log.debug("tree file = %s" % job.tree)
-
-        if job.fail() :
-            return
 
         # get a lock on the db
         self.lock.acquire()
@@ -331,6 +350,10 @@ class GluttonDB(object) :
 
     def get_genefamily(self, famid) :
         return self.data[famid]
+
+    # this is quite awkward...
+    def get_genename_from_geneid(self, geneid) :
+        return dict([ (i.id, i.name) for i in self.data[self.seq2famid[geneid]] ])[geneid]
 
     def _famid_to_alignment(self, famid) :
         return famid + '.align'
@@ -389,6 +412,7 @@ class GluttonDB(object) :
 
         summary = {
             'num_single_genes'  : 0,
+            'num_genes' : 0,
             'error_empty'       : 0,
             'error_noalignment' : 0,
             'error_notree'      : 0,
@@ -397,6 +421,8 @@ class GluttonDB(object) :
 
         for famid in self.data :
             gf_size = len(self.data[famid])
+
+            summary['num_genes'] += gf_size
 
             # err
             if gf_size == 0 :
@@ -439,6 +465,7 @@ class GluttonDB(object) :
                 exit(1)
 
         if human_readable_summary :
+            print ""
             print "Filename:", self.fname
             print ""
             print "Species:", self.species
@@ -448,6 +475,7 @@ class GluttonDB(object) :
             print "Downloaded:", time.strftime('%d/%m/%y at %H:%M:%S', time.localtime(self.download_time))
             print "Checksum:", self.checksum
             print ""
+            print "Number of genes:", summary['num_genes']
             print "Number of gene families:", len(self.data)
             print "Families containing multiple genes:", len(self.data) - summary['num_single_genes']
             print "Missing alignments:", summary['error_noalignment']

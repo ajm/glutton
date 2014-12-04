@@ -117,7 +117,11 @@ class Aligner(object) :
             # ignore the jobs that have already been run
             if self.info.in_genefamily2filename(famid) :
                 continue
-            
+
+#            if famid != 'genefamily1485' :
+#                continue
+
+
             # get the alignment and tree from the database
             try :
                 alignment = self.db.get_alignment(famid)
@@ -149,13 +153,22 @@ class Aligner(object) :
 
     def job_callback(self, job) :
         self.log.debug("callback from %s: %s + %s" % (str(job), job.genefamily, ','.join([ i.id for i in job.input ])))
-        self.log.debug("alignment file = %s" % job.alignment)
+        self.log.debug("protein alignment file = %s" % (job.protein_alignment))
+
+        if self.db.nucleotide :
+            self.log.debug("nucleotide alignment file = %s" % (job.nucleotide_alignment))
 
         if job.success() :
-            dst = tmpfile(directory=self.directory)
-            shutil.copyfile(job.alignment, dst)
+            dst = tmpfile(directory=self.directory, suffix='.protein')
+
+            shutil.copyfile(job.protein_alignment, dst)
+            
+            if self.db.nucleotide :
+                shutil.copyfile(job.nucleotide_alignment, dst[:-8] + '.nucleotide')
         
-            self.info.put_genefamily2filename(job.genefamily, basename(dst))
+            dst_base = basename(dst)[:-8]
+
+            self.info.put_genefamily2filename(job.genefamily, dst_base)
         else :
             self.info.put_genefamily2filename(job.genefamily)
 

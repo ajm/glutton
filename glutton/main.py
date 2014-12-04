@@ -33,6 +33,9 @@ def handle_args(args) :
                 description='Evolutionary transcriptome scaffolding',
                 formatter_class=fmt)
     
+    parser.add_argument('-V', '--version',  action='version', version="%(prog)s " + str(glutton.__version__),
+                     help='show version')
+
     def add_generic_options(par) :
         par.add_argument('--tmpdir', type=str, default=tmpdir(),
                          help='temporary directory')
@@ -40,8 +43,6 @@ def handle_args(args) :
                          help='number of threads')
         par.add_argument('-v', '--verbose',  action='count', default=0, 
                          help='set verbosity, can be set multiple times e.g.: -vvv')
-        par.add_argument('-V', '--version',  action='version', version="%(prog)s " + str(glutton.__version__), 
-                         help='show version')
 
     def add_database_options(par) :
         ensembl_db = ('ensembl', 'metazoa', 'fungi', 'protists', 'plants', 'bacteria')

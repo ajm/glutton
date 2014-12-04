@@ -34,6 +34,18 @@ class Gene(object) :
 
         return ">%s\n%s\n" % (self.id, self.sequence)
 
+    def back_translate(self) :
+        self.sequence = self.sequence[::-1]
+
+        d = {
+            'A':'T',
+            'T':'A',
+            'G':'C',
+            'C':'G'
+        }
+
+        self.sequence = ''.join([ d[i] for i in self.sequence ])
+
     def __len__(self) :
         return len(self.sequence)
 

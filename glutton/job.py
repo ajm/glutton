@@ -1,12 +1,13 @@
 import os
 
-from glutton.utils import get_log, tmpfasta, tmpfile, rm_f
+from glutton.utils import get_log, tmpfasta, tmpfasta_orfs, tmpfile, rm_f
 from glutton.prank import Prank
 from glutton.pagan import Pagan
-from glutton.blastx import Blastx
+from glutton.blast import Blastx, Tblastx
 
 from abc import abstractmethod
 from os.path import basename, isfile, join
+from sys import exit
 
 class JobError(Exception) :
     pass
@@ -50,17 +51,14 @@ class Job(object) :
     def run(self) :
         self.start()
         
-        ret = self._run()
+        try :
+            ret = self._run()
 
-#       XXX
-#        try :
-#            ret = self._run()
-#
-#        except Exception, e :
-#            self.log.error(str(e))
-#            self.end(Job.INTERNAL_ERROR)
-#            self.cleanup()
-#            return
+        except Exception, e :
+            self.log.error(str(e))
+            self.end(Job.INTERNAL_ERROR)
+            self.cleanup()
+            return
 
         if ret == 0 :
             self.end(Job.SUCCESS)
@@ -69,7 +67,9 @@ class Job(object) :
         else :
             self.end(Job.TERMINATED)
 
-        self.callback(self)
+        if not self.terminated() :
+            self.callback(self)
+
         self.cleanup()
 
     def state_str(self) :
@@ -121,14 +121,16 @@ class PrankJob(Job) :
 
         return self.prank.run(self.infile, self.infile)
 
-class BlastxJob(Job) :
-    def __init__(self, callback, database, queries) :
-        super(BlastxJob, self).__init__(callback)
+class BlastJob(Job) :
+    def __init__(self, callback, database, queries, blast_version='tblastx') :
+        super(BlastJob, self).__init__(callback)
 
         self.database = database
         self.queries = queries
 
-        self.blastx = Blastx()
+        assert blast_version in ('blastx', 'tblastx')
+
+        self.blastx = Tblastx() if blast_version == 'tblastx' else Blastx()
 
     @property
     def input(self) :
@@ -167,14 +169,18 @@ class PaganJob(Job) :
         return self._genefamily
 
     @property
-    def alignment(self) :
-        return self.pagan.alignment
+    def nucleotide_alignment(self) :
+        return self.pagan.nucleotide_alignment
+
+    @property
+    def protein_alignment(self) :
+        return self.pagan.protein_alignment
 
     def _get_filenames(self) :
         return [self.query_fname, self.alignment_fname, self.tree_fname] + self.pagan.output_filenames(self.out_fname)
 
     def _run(self) :
-        self.query_fname        = tmpfasta(self._queries)
+        self.query_fname        = tmpfasta_orfs(self._queries) #tmpfasta(self._queries)
         self.out_fname          = tmpfile()
         self.alignment_fname    = tmpfasta(self._alignment)
         

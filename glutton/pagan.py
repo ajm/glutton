@@ -16,8 +16,12 @@ class Pagan(ExternalTool) :
         raise ExternalToolError('could not get version of pagan')
 
     @property
-    def alignment(self) :
-        return self.alignment_fname
+    def nucleotide_alignment(self) :
+        return self.nucleotide_alignment_fname
+
+    @property
+    def protein_alignment(self) :
+        return self.protein_alignment_fname
 
     def output_filenames(self, outfile) :
         return [ outfile + i for i in ('.codon.fas', '.fas', '') ]
@@ -30,8 +34,9 @@ class Pagan(ExternalTool) :
                       "--fast-placement",
                       "--test-every-terminal-node",
                       "--translate", 
-                      "--find-best-orf",
                       "--threads", "1"
+                      #"--find-best-orf",
+                      #"--fragments"
                      ]
 
         if tree_fname :
@@ -41,7 +46,8 @@ class Pagan(ExternalTool) :
         #else :
         #    parameters.append("--pileup-alignment")
 
-        self.alignment_fname = out_fname + '.fas'
+        self.protein_alignment_fname = out_fname + '.fas'
+        self.nucleotide_alignment_fname = out_fname + '.codon.fas'
 
         returncode, output = self._execute(parameters, self.output_filenames(out_fname))
 
@@ -54,3 +60,19 @@ class Pagan(ExternalTool) :
 if __name__ == '__main__' :
     print Pagan().name, "version is", Pagan().version
 
+    from sys import argv, stderr, exit
+
+    if len(argv) not in (4, 5) :
+        print >> stderr, "Usage: %s qfile ofile afile [tfile]" % argv[0]
+        exit(1)
+
+    qfile = argv[1]
+    ofile = argv[2]
+    afile = argv[3]
+    tfile = argv[4] if len(argv) == 5 else None
+
+    p = Pagan()
+    p.run(qfile, ofile, afile, tfile)
+    
+    print "output files are: %s" % ', '.join(p.output_filenames(ofile))
+    

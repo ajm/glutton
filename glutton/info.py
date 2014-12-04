@@ -73,7 +73,7 @@ class GluttonInformation(object) :
         return join(self.directory, CONTIG_FILE)
 
     @property
-    def blastx_filename(self) :
+    def blast_filename(self) :
         global BLAST_FILE
         return join(self.directory, BLAST_FILE)
 
@@ -103,8 +103,11 @@ class GluttonInformation(object) :
     def read_progress_files(self) :
         self.params                     = self._load(self.parameter_filename)
         self.contig_query_map           = self._load(self.contig_filename)
-        self.query_gene_map             = self._load(self.blastx_filename)
+        self.query_gene_map             = self._load(self.blast_filename)
         self.genefamily_filename_map    = self._load(self.pagan_filename)
+
+        if self.contig_query_map :
+            self.log.info("read %d contig to query id mappings" % len(self.contig_query_map))
 
         if self.query_gene_map :
             self.log.info("read %d blast results" % len(self.query_gene_map))
@@ -116,7 +119,7 @@ class GluttonInformation(object) :
     def write_progress_files(self) :
         self._dump(self.parameter_filename, self.params)
         self._dump(self.contig_filename,    self.contig_query_map)
-        self._dump(self.blastx_filename,    self.query_gene_map)
+        self._dump(self.blast_filename,    self.query_gene_map)
         self._dump(self.pagan_filename,     self.genefamily_filename_map)
 
     # related to database parameters
@@ -152,10 +155,8 @@ class GluttonInformation(object) :
         return "%s/%d %s md5=%s" % (p['db_species'], p['db_release'], p['contig_filename'], p['contig_checksum'])
 
     def _not_same_db(self, par) :
-        for key in self.params :
-            if self.params[key] != par[key] :
-                return True
-        return False
+        return (self.params['db_checksum'] != par['db_checksum']) or \
+               (self.params['contig_checksum'] != par['contig_checksum'])
 
     # contig to query ids are only get
     @do_locking

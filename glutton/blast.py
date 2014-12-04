@@ -6,9 +6,9 @@ import subprocess
 import os
 
 
-class Blastx(ExternalTool) :
+class Blast(ExternalTool) :
     def __init__(self) :
-        super(Blastx, self).__init__()
+        super(Blast, self).__init__()
 
         self._results = []
 
@@ -17,11 +17,11 @@ class Blastx(ExternalTool) :
         returncode, output = self._execute(["-version"], [])
 
         for line in output.split('\n') :
-            if line.startswith('blastx') :
+            if line.startswith(self.name) :
                 v = line.strip().split()[-1]
                 return v[:-1]
 
-        raise ExternalToolError('could not get version of blastx')
+        raise ExternalToolError("could not get version of %s" % self.name)
     
     @staticmethod
     def makedb(db_fname, nucleotide) :
@@ -32,7 +32,7 @@ class Blastx(ExternalTool) :
             subprocess.check_output(c, stderr=subprocess.STDOUT, close_fds=True)
 
         except subprocess.CalledProcessError, cpe :
-            self.log.error("%s returncode=%d\n%s" % (c[0], cpe.returncode, cpe.output))
+            get_log().fatal("%s returncode=%d\n%s" % (c[0], cpe.returncode, cpe.output))
             exit(1)
 
     @property
@@ -64,12 +64,21 @@ class Blastx(ExternalTool) :
                     self._results.append((contig,gene,identity,length))            
 
                 except ValueError :
-                    self.log.warn("bad line returned by blastx (%s)" % line)
+                    self.log.warn("bad line returned by %s (%s)" % (self.name, line))
                     continue
 
 
         return returncode
 
+class Blastx(Blast) :
+    def __init__(self) :
+        super(Blastx, self).__init__()
+
+class Tblastx(Blast) :
+    def __init__(self) :
+        super(Tblastx, self).__init__()
+
 if __name__ == '__main__' :
-     print Blastx().name, "version is", Blastx().version
+    print Blastx().name, "version is", Blastx().version
+    print Tblastx().name, "version is", Tblastx().version
 

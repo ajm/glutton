@@ -3,8 +3,8 @@ import os
 import threading
 
 from glutton.utils import get_log, tmpfile, openmp_num_threads, rm_f
-from glutton.blastx import Blastx
-from glutton.job import BlastxJob
+from glutton.blast import Blast
+from glutton.job import BlastJob
 from glutton.queue import WorkQueue
 
 
@@ -42,13 +42,17 @@ class All_vs_all_search(object) :
 
         # creates db + {phr,pin,psq} in same dir as db
         self.log.info("creating blast db...")
-        Blastx.makedb(db, nucleotide)
+        Blast.makedb(db, nucleotide)
 
+        # need to be careful about what blast command we use
+        blast_version = 'tblastx' if nucleotide else 'blastx'
+
+        # queue up the jobs
         self.log.info("starting local alignments...")
         self.q = WorkQueue()
 
         for query in self._batch(queries) :
-            self.q.enqueue(BlastxJob(self.job_callback, db, query))
+            self.q.enqueue(BlastJob(self.job_callback, db, query, blast_version))
 
         self.log.info("waiting for job queue to drain...")
         self.q.join()
@@ -67,7 +71,7 @@ class All_vs_all_search(object) :
         return self.gene_assignments
 
     def job_callback(self, job) :
-        self.log.debug("%d blastx results returned" % len(job.results))
+        self.log.debug("%d blast results returned" % len(job.results))
 
         self.lock.acquire()
 

@@ -1,4 +1,4 @@
-from sys import exit
+from sys import exit, stderr
 
 from glutton.utils import get_log
 from glutton.ensembl_sql import ensembl_sql_hosts, get_latest_release_sql, find_database_for_species
@@ -12,15 +12,7 @@ def get_missing_info(species, release, database_name) :
 
     genome_db_id, db_host, db_name = find_database_for_species(species, release, database_name)
 
-    project_name = 'ensembl'
-    for i in ('metazoa', 'bacteria', 'fungi', 'protists', 'plants') :
-        if i in db_name :   
-            project_name = i
-            break
-
-    get_log().info("%s is found in %s" % (species, project_name))
-
-    return release, project_name, ensembl_sql_hosts[db_host]
+    return release, database_name, ensembl_sql_hosts[db_host]
 
 def get_all_species_pycogent(db, suppress) :
     log = get_log()
@@ -97,6 +89,8 @@ def download_database_pycogent(species, release, database_name='ensembl', nucleo
     genes = set()
     families = []
 
+    stderr.write("\r[downloading %s] got %d sequences " % ("cDNA" if nucleotide else "protein", len(genes)))
+
     for gene in genome.getGenesMatching(BioType='protein_coding') :
         stableid = gene.StableId
 
@@ -111,17 +105,15 @@ def download_database_pycogent(species, release, database_name='ensembl', nucleo
         current = []
         
         if paralogs is None :
-            log.info("downloading %s" % stableid)
-
+            stderr.write("\r[downloading %s] got %d sequences " % ("cDNA" if nucleotide else "protein", len(genes)))
             current.append((stableid, str(gene.CanonicalTranscript.Cds) if nucleotide else str(gene.CanonicalTranscript.ProteinSeq)))
 
         else :
             for paralog in paralogs.Members :
                 paralogid = paralog.StableId
-
-                log.info("downloading %s" % paralogid)
-
                 genes.add(paralogid)
+
+                stderr.write("\r[downloading %s] got %d sequences " % ("cDNA" if nucleotide else "protein", len(genes)))
 
                 try :
                     current.append((paralogid, str(paralog.CanonicalTranscript.Cds) if nucleotide else str(paralog.CanonicalTranscript.ProteinSeq)))
@@ -133,7 +125,7 @@ def download_database_pycogent(species, release, database_name='ensembl', nucleo
         #print ','.join([ i for i,j in current ])
         families.append(current)
 
-        log.info("")        
+    stderr.write("\r[downloading %s] got %d sequences\n" % ("cDNA" if nucleotide else "protein", len(genes)))
 
     return families
 
