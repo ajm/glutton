@@ -10,7 +10,7 @@ import argparse
 import glutton
 import glutton.subcommands
 
-from glutton.utils import tmpdir, set_threads, num_threads, set_tmpdir, set_verbosity, setup_logging, get_log, duration_str
+from glutton.utils import tmpdir, set_threads, num_threads, set_tmpdir, set_verbosity, setup_logging, get_log, duration_str, check_dir
 from glutton.ensembl_sql import custom_database
 from glutton.ensembl_downloader import set_ensembl_download_method
 
@@ -147,8 +147,8 @@ def handle_args(args) :
                              help='fasta file containing contigs')
     parser_scaf.add_argument('-a', '--alignments', type=str, default=default_alignment_dir,
                              help='directory containing evolutionary alignments')
-    parser_scaf.add_argument('-i', '--identity', type=check_zero_one, default=0.9,
-                             help='minimum nucleotide identity for contig overlaps')
+#    parser_scaf.add_argument('-i', '--identity', type=check_zero_one, default=0.9,
+#                             help='minimum nucleotide identity for contig overlaps')
     parser_scaf.add_argument('-s', '--scaffolds', type=str, default='scaffolds.fasta',
                              help='output file for scaffolds')
 
@@ -159,7 +159,10 @@ def handle_args(args) :
 def generic_options(args) :
     # database
     if hasattr(args, 'database_host') and args.database_host :
-        custom_database(args.database_host, args.database_port, args.database_user, args.database_password)
+        custom_database(args.database_host, 
+                        args.database_port, 
+                        args.database_user, 
+                        args.database_password)
 
     # threads
     if hasattr(args, 'threads') :
@@ -168,10 +171,12 @@ def generic_options(args) :
     # tmpdir
     if hasattr(args, 'tmpdir') :
         try :
+            check_dir(args.tmpdir, create=True)
             set_tmpdir(args.tmpdir)
         
         except OSError :
             print >> stderr, "ERROR: %s does not exist..." % args.tmpdir 
+            exit(1)
 
     # verbosity
     if hasattr(args, 'verbose') :

@@ -12,7 +12,7 @@ from glutton.utils import get_log
 from glutton.info import GluttonInformation
 
 
-NOT_DEALT_WITH = 0
+DEBUG = True
 
 class ScaffolderError(Exception) :
     pass
@@ -45,6 +45,9 @@ class Alignment(object) :
         #     so i don't need to check then fail
         m = re.match("^(comp\d+\_c\d+)\_seq\d+$", self.id)
         self.gene_id = m.group(1)
+
+    def __getitem__(self, i) :
+        return self.seq[i] if self.start <= i < self.end else None
 
     def _ensure_order(self, a2, func) :
         return func(self, a2) if self.start <= a2.start else func(a2, self)
@@ -116,6 +119,9 @@ class Alignment(object) :
     def simple_mergeable(self, a2) :
         return self._ensure_order(a2, self._simple_mergeable)
 
+    def isoforms(self, a2) :
+        return self.gene_id == a2.gene_id
+
     # assumes a starts before b
     def _merge_contigs(self, a, b) :
         # continuous case
@@ -166,20 +172,16 @@ class Alignment(object) :
         return str((self.id, self.start, self.end, self.seq))
 
 class Scaffolder(object) :
-    def __init__(self, db, contigs_fname, alignments_dir, scaffolds_fname, identity) :
+    def __init__(self, db, contigs_fname, alignments_dir, scaffolds_fname) :
         self.db                 = db
         self.contigs_fname      = contigs_fname
         self.alignments_dir     = alignments_dir
         self.scaffolds_fname    = scaffolds_fname
-        self.identity           = identity
 
         self.log = get_log()
 
         self.info = GluttonInformation(db, contigs_fname, alignments_dir)
         
-        self.scaffold_fmt = "glutton%d"
-        self.scaffold_id = 0
-
 #        if not self.info.alignments_complete() :
 #            self.log.fatal("alignments are not complete!")
 #            exit(1)
@@ -285,33 +287,33 @@ class Scaffolder(object) :
 
         return tmp2
 
-    def remove_common_gaps(self, seq_a, seq_b) :
-        new_a = ""
-        new_b = ""
+#    def remove_common_gaps(self, seq_a, seq_b) :
+#        new_a = ""
+#        new_b = ""
+#
+#        for a,b in zip(seq_a, seq_b) :
+#            if (a,b) == ('-','-') :
+#                continue
+#            
+#            new_a += a
+#            new_b += b
+#
+#        return new_a, new_b
 
-        for a,b in zip(seq_a, seq_b) :
-            if (a,b) == ('-','-') :
-                continue
-            
-            new_a += a
-            new_b += b
-
-        return new_a, new_b
-
-    def get_alignment_overlaps(self, alignments) :
-        tmp = []
-
-        for ind_a in range(0, len(alignments)) :
-            for ind_b in range(ind_a + 1, len(alignments)) :
-                a = alignments[ind_a]
-                b = alignments[ind_b]
-                
-                overlap = a.simple_overlaps(b)
-
-                if overlap :
-                    tmp.append((ind_a, ind_b, overlap))
-
-        return tmp
+#    def get_alignment_overlaps(self, alignments) :
+#        tmp = []
+#
+#        for ind_a in range(0, len(alignments)) :
+#            for ind_b in range(ind_a + 1, len(alignments)) :
+#                a = alignments[ind_a]
+#                b = alignments[ind_b]
+#                
+#                overlap = a.simple_overlaps(b)
+#
+#                if overlap :
+#                    tmp.append((ind_a, ind_b, overlap))
+#
+#        return tmp
 
     # a complex overlap set is defined as one where those overlaps
     # form a non-linear graph
@@ -362,7 +364,8 @@ class Scaffolder(object) :
 
                 if a.simple_overlaps(b) :
                     if consider_isoforms :
-                        if not a.mergeable(b) :
+                        #if not a.mergeable(b) :
+                        if a.isoforms(b) :
                             return True
                     else :
                         if not a.simple_mergeable(b) :
@@ -371,40 +374,43 @@ class Scaffolder(object) :
         return False
 
     def merge_alignments(self, alignments) :
+        global DEBUG
+
         # perform merges of overlaps first
         complex_group = False
         merged_groups = []
 
+        def label_all(group, label) :
+            for i in group :
+                i.desc = label
 
         for group in self.group_alignments(alignments) :
-            if self.group_cannot_be_merged(group) :
-                
-                #self.print_alignments(group)
-                
+            no_print = False
+
+            if self.group_cannot_be_merged_isoforms(group) :
                 complex_group = True
-                for i in group :
-                    i.desc = 'conflict'
-                    merged_groups.append(i)
-
-            elif self.group_cannot_be_merged_isoforms(group) :
-                #self.print_alignments(group)
-
-                complex_group = True
-
-                # TODO distinguish between groups comprised wholly of isoforms for one gene 
-                #      vs a group with other stuff mixed in (isoforms_multiple vs isoforms_ambiguous)
 
                 if len(set([ g.gene_id for g in group ])) == 1 :
-                    d = 'single_gene_multiple_isoform'
+                    label_all(group, 'single_gene_multiple_isoform')
                 else :
-                    d = 'multiple_gene_multiple_isoform'
+                    label_all(group, 'multiple_gene_multiple_isoform')
 
-                for i in group :
-                    i.desc = d
-                    merged_groups.append(i)
+                merged_groups += group
+
+                no_print = True
+
+            elif self.group_cannot_be_merged(group) :
+
+                complex_group = True
+                label_all(group, 'conflict')
+                merged_groups += group
 
             else :
                 merged_groups.append( reduce(operator.add, sorted(group, key=lambda x : x.start)) )
+
+
+            if DEBUG and (not no_print) and (len(group) > 1) :
+                self.print_alignments(group)
 
 
         # bail out if there are any complex alignments (non-linear overlaps caused by bad merges or isoforms)
@@ -415,47 +421,66 @@ class Scaffolder(object) :
         return [ reduce(operator.add, sorted(merged_groups, key=lambda x : x.start)) ]
 
     def print_alignments(self, alignments) :
-        if len(alignments) == 0 :
-            return
-
-        # many isoforms, same gene
-        num_genes = len(set([ '_'.join(i.id.split('_')[:1]) for i in alignments ])) 
-        if num_genes == 1 :
-            return
-
-        overlaps = self.get_alignment_overlaps(alignments)
-
-        if len(overlaps) == 0 :
-            return
-
-        print ""
-        print "#alignments=%d #overlaps=%d #genes=%d" % (len(alignments), len(overlaps), num_genes)
-        print [ (i.id, i.start, i.end) for i in alignments ]
-        print overlaps
-        #print ""
-
-        #raise NotImplementedError("")
-
-        # 3. trivial overlaps - no overlap conflicts
-        # pairs of contigs overlapping + singletons
         
-        for contig_a,contig_b,overlap_indices in overlaps :
+        for a in alignments :
+            print "%s\t%s" % (a.id, a.seq)
 
-            sl = slice(*overlap_indices)
-            slice_a = alignments[contig_a].seq[sl]
-            slice_b = alignments[contig_b].seq[sl]
-
-            slice_a, slice_b = self.remove_common_gaps(slice_a, slice_b)
-            slice_diff = ''.join([ "X" if i != j else " " for i,j in zip(slice_a, slice_b) ])
-
-            if ('-' in slice_a) or ('-' in slice_b) :
-                print (contig_a,contig_b,overlap_indices), "!="
+        alignment_diff = ""
+    
+        for column in range(len(alignments[0].seq)) :
+            chars = set([ a[column] for a in alignments if a[column] ])
+            if ('-' in chars) and (len(chars) > 1) :
+                alignment_diff += 'X'
+            elif len(chars) < 2 :
+                alignment_diff += ' '
             else :
-                print (contig_a,contig_b,overlap_indices), "=="
+                alignment_diff += 'M'
 
-            print slice_a
-            print slice_b
-            print slice_diff
+        print "difference       \t%s" % alignment_diff
+        print ""
+
+#    def print_alignments_old(self, alignments) :
+#        if len(alignments) == 0 :
+#            return
+#
+#        # many isoforms, same gene
+#        num_genes = len(set([ '_'.join(i.id.split('_')[:1]) for i in alignments ])) 
+#        if num_genes == 1 :
+#            return
+#
+#        overlaps = self.get_alignment_overlaps(alignments)
+#
+#        if len(overlaps) == 0 :
+#            return
+#
+#        print ""
+#        print "#alignments=%d #overlaps=%d #genes=%d" % (len(alignments), len(overlaps), num_genes)
+#        print [ (i.id, i.start, i.end) for i in alignments ]
+#        print overlaps
+#        #print ""
+#
+#        #raise NotImplementedError("")
+#
+#        # 3. trivial overlaps - no overlap conflicts
+#        # pairs of contigs overlapping + singletons
+#        
+#        for contig_a,contig_b,overlap_indices in overlaps :
+#
+#            sl = slice(*overlap_indices)
+#            slice_a = alignments[contig_a].seq[sl]
+#            slice_b = alignments[contig_b].seq[sl]
+#
+#            slice_a, slice_b = self.remove_common_gaps(slice_a, slice_b)
+#            slice_diff = ''.join([ "X" if i != j else " " for i,j in zip(slice_a, slice_b) ])
+#
+#            if ('-' in slice_a) or ('-' in slice_b) :
+#                print (contig_a,contig_b,overlap_indices), "!="
+#            else :
+#                print (contig_a,contig_b,overlap_indices), "=="
+#
+#            print slice_a
+#            print slice_b
+#            print slice_diff
 
     def process_alignments(self, fout) :
 
@@ -469,18 +494,15 @@ class Scaffolder(object) :
                 for a in self.merge_alignments(alignment[gene_name]) :
                     print >> fout, a.format('fasta') 
 
-
-    def next_scaffold_id(self) :
-        self.scaffold_id += 1
-        return self.scaffold_fmt % (self.scaffold_id - 1)
+                    if DEBUG :
+                        print a.format('fasta')
+                        print "\n"
 
     # return a string in the glutton format
     def fasta_output(self, contigs, gene, seq, desc) :
         return ">%s contigs=%s gene=%s desc=%s\n%s" % (self.next_scaffold_id(), ','.join(contigs), gene, desc, seq)
 
     def scaffold(self) :
-        global NOT_DEALT_WITH
-
         # previously it was one contig per family, however, they are now performed simultaneously
         #   hence nothing really needs to be stored
         #
@@ -515,11 +537,10 @@ class Scaffolder(object) :
 
         with open(self.scaffolds_fname, 'w') as f :
             aligned_contigs = self.process_alignments(f)
-            #self.output_unscaffolded_contigs(f, aligned_contigs)
+            self.output_unscaffolded_contigs(f, aligned_contigs)
 
         self.log.info("wrote %s" % self.scaffolds_fname)
-        self.log.info("ignored %d alignments (too complex)" % NOT_DEALT_WITH)
-
+        
         return 0
 
     def output_unscaffolded_contigs(self, fout, aligned_contigs) :

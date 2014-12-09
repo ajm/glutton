@@ -1,6 +1,6 @@
 import os
 
-from glutton.utils import get_log, tmpfasta, tmpfasta_orfs, tmpfile, rm_f
+from glutton.utils import get_log, tmpfasta, tmpfasta_orfs, tmpfile, rm_f, threadsafe_io
 from glutton.prank import Prank
 from glutton.pagan import Pagan
 from glutton.blast import Blastx, Tblastx
@@ -8,6 +8,9 @@ from glutton.blast import Blastx, Tblastx
 from abc import abstractmethod
 from os.path import basename, isfile, join
 from sys import exit
+
+#import time
+
 
 class JobError(Exception) :
     pass
@@ -122,7 +125,7 @@ class PrankJob(Job) :
         return self.prank.run(self.infile, self.infile)
 
 class BlastJob(Job) :
-    def __init__(self, callback, database, queries, blast_version='tblastx') :
+    def __init__(self, callback, database, queries, blast_version='blastx') :
         super(BlastJob, self).__init__(callback)
 
         self.database = database
@@ -177,6 +180,7 @@ class PaganJob(Job) :
         return self.pagan.protein_alignment
 
     def _get_filenames(self) :
+        #return self.pagan.output_filenames(self.out_fname)
         return [self.query_fname, self.alignment_fname, self.tree_fname] + self.pagan.output_filenames(self.out_fname)
 
     def _run(self) :
@@ -186,9 +190,16 @@ class PaganJob(Job) :
         
         self.tree_fname = tmpfile(self._tree) if self._tree else None
         
-
-        return self.pagan.run(self.query_fname, 
+        
+        #start_time = time.time()
+        
+        result = self.pagan.run(self.query_fname, 
                               self.out_fname, 
                               self.alignment_fname, 
                               self.tree_fname)
+        
+        #end_time = time.time()
+        #threadsafe_io('pagan_times.txt', "%s %s %s %d" % (self.query_fname, self.alignment_fname, str(self.tree_fname), end_time - start_time))
+        
+        return result
 

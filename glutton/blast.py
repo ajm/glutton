@@ -24,7 +24,7 @@ class Blast(ExternalTool) :
         raise ExternalToolError("could not get version of %s" % self.name)
     
     @staticmethod
-    def makedb(db_fname, nucleotide) :
+    def makedb(db_fname, nucleotide=False) :
         c = ["makeblastdb", "-in", db_fname, "-dbtype", "nucl" if nucleotide else "prot"]
 
         try :

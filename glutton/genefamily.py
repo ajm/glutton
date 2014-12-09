@@ -1,4 +1,6 @@
 from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio.Alphabet import generic_dna
 
 # maybe this should extend Sequence from biopython?
 class Gene(object) :
@@ -26,15 +28,27 @@ class Gene(object) :
         return self.sequence
 
     def format(self, fmt, full=False) :
-        if fmt != 'fasta' :
+        if fmt not in ('fasta', 'protein', 'nucleotide') :
             raise NotImplementedError()
 
+        if fmt == 'protein' :
+            padding = ''
+            r = len(self.sequence) % 3
+            if r == 1 :
+                padding = 'NN'
+            elif r == 2 :
+                padding = 'N'
+
+            seq_to_print = Seq(self.sequence + padding, generic_dna).translate() 
+        else :
+            seq_to_print = self.sequence
+
         if full :
-            return ">%s name=\"%s\"\n%s\n" % (self.id, self.name, self.sequence)
+            return ">%s name=\"%s\"\n%s\n" % (self.id, self.name, seq_to_print)
 
-        return ">%s\n%s\n" % (self.id, self.sequence)
+        return ">%s\n%s\n" % (self.id, seq_to_print)
 
-    def back_translate(self) :
+    def reverse_complement(self) :
         self.sequence = self.sequence[::-1]
 
         d = {

@@ -1,6 +1,7 @@
 import subprocess
 import os
 import threading
+import sys
 
 from glutton.utils import get_log, tmpfile, openmp_num_threads, rm_f
 from glutton.blast import Blast
@@ -16,6 +17,9 @@ class All_vs_all_search(object) :
         self.gene_assignments = {}
         self.lock = threading.Lock()
         self.q = None
+
+        self.total_jobs = 0
+        self.complete_jobs = 0
 
     def _batch(self, x) :
         tmp = []
@@ -42,17 +46,18 @@ class All_vs_all_search(object) :
 
         # creates db + {phr,pin,psq} in same dir as db
         self.log.info("creating blast db...")
-        Blast.makedb(db, nucleotide)
-
-        # need to be careful about what blast command we use
-        blast_version = 'tblastx' if nucleotide else 'blastx'
+        Blast.makedb(db)
 
         # queue up the jobs
         self.log.info("starting local alignments...")
         self.q = WorkQueue()
 
+        self.total_jobs = len(queries)
+        self.complete_jobs = -self.batch_size
+        self._progress()
+
         for query in self._batch(queries) :
-            self.q.enqueue(BlastJob(self.job_callback, db, query, blast_version))
+            self.q.enqueue(BlastJob(self.job_callback, db, query, 'blastx'))
 
         self.log.info("waiting for job queue to drain...")
         self.q.join()
@@ -70,10 +75,23 @@ class All_vs_all_search(object) :
     def get_intermediate_results(self) :
         return self.gene_assignments
 
+    def _progress(self) :
+        self.complete_jobs += self.batch_size
+        
+        if self.complete_jobs > self.total_jobs :
+            self.complete_jobs = self.total_jobs
+
+        sys.stderr.write("\rProgress: %d / %d blastx alignments " % (self.complete_jobs, self.total_jobs))
+
+        if self.complete_jobs == self.total_jobs :
+            print >> sys.stderr, "\ndone!"
+
     def job_callback(self, job) :
         self.log.debug("%d blast results returned" % len(job.results))
 
         self.lock.acquire()
+
+        self._progress()
 
         if job.success() :
             for contig,geneid,identity,length in job.results :

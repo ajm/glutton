@@ -97,8 +97,7 @@ def scaffold_command(args) :
     scaf = Scaffolder(gdb,
                       args.contigs, 
                       args.alignments, 
-                      args.scaffolds,
-                      args.identity)
+                      args.scaffolds)
 
     def _cleanup(signal, frame) :
         print >> stderr, "Killed by user, cleaning up..."

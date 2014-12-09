@@ -3,6 +3,7 @@ import os
 import logging
 import platform
 import hashlib
+import threading
 
 from sys import exit
 from multiprocessing import cpu_count
@@ -105,12 +106,12 @@ def _write_six_orfs(fout, seq) :
     for i in range(3) :
         print >> fout, ">%s\n%s" % (seq.id + '_orf' + str(i+1), seq[i:])
 
-    seq.back_translate()
+    seq.reverse_complement()
 
     for i in range(3) :
         print >> fout, ">%s\n%s" % (seq.id + '_orf' + str(i+4), seq[i:])
 
-    seq.back_translate()
+    seq.reverse_complement()
 
 def tmpfasta_orfs(seq) :
     fname = tmpfile()
@@ -133,6 +134,18 @@ def get_binary_path(programname) :
             break
     
     return None
+
+_lock = threading.Lock()
+
+def threadsafe_io(fname, s) :
+    global _lock
+
+    _lock.acquire()
+
+    with open(fname, 'a') as f :
+        print >> f, s
+
+    _lock.release()
 
 _glutton_stream_loglevel = logging.ERROR
 

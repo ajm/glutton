@@ -1,6 +1,7 @@
 import collections
 import shutil
 import sys
+import threading
 
 from glutton.db import GluttonDB, GluttonDBFileError
 from glutton.localsearch import All_vs_all_search
@@ -28,6 +29,10 @@ class Aligner(object) :
         self.search = All_vs_all_search(batch_size)
         self.cleanup_files = []
         self.q = None
+
+        self.lock = threading.Lock()
+        self.complete_jobs = 0
+        self.total_jobs = 0
 
         self.log = get_log()
 
@@ -113,6 +118,10 @@ class Aligner(object) :
         # queue all the alignments up using a work queue and pagan
         self.q = WorkQueue()
 
+        self.total_jobs = len(genefamily_contig_map)
+        self.complete_jobs = -1
+        self._progress()
+
         for famid in self.sort_keys_by_complexity(genefamily_contig_map) :
             # ignore the jobs that have already been run
             if self.info.in_genefamily2filename(famid) :
@@ -151,12 +160,27 @@ class Aligner(object) :
     def sort_keys_by_complexity(self, d) :
         return [ k for k,v in sorted(d.items(), reverse=True, key=lambda x : seqlen(x[1])) ]
 
+    def _progress(self) :
+        self.lock.acquire()
+
+        self.complete_jobs += 1
+
+        sys.stderr.write("\rProgress: %d / %d pagan alignments " % (self.complete_jobs, self.total_jobs))
+        sys.stderr.flush()
+
+        if self.complete_jobs == self.total_jobs :
+            print >> sys.stderr, "\ndone!"
+
+        self.lock.release()
+
     def job_callback(self, job) :
         self.log.debug("callback from %s: %s + %s" % (str(job), job.genefamily, ','.join([ i.id for i in job.input ])))
         self.log.debug("protein alignment file = %s" % (job.protein_alignment))
 
         if self.db.nucleotide :
             self.log.debug("nucleotide alignment file = %s" % (job.nucleotide_alignment))
+
+        self._progress()
 
         if job.success() :
             dst = tmpfile(directory=self.directory, suffix='.protein')

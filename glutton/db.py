@@ -52,6 +52,8 @@ class GluttonDB(object) :
         self.seq2famid   = None     # dict of geneid -> famid
         self.dirty       = False
         self.lock        = threading.Lock()
+        self.complete_jobs = 0
+        self.total_jobs = 0
 
         self.log = get_log()
 
@@ -265,6 +267,10 @@ class GluttonDB(object) :
         if not hasattr(self, "q") :
             self.q = WorkQueue()
 
+        self.total_jobs = len(unaligned)
+        self.complete_jobs = -1
+        self._progress()
+
         for i in unaligned :
             self.q.enqueue(PrankJob(self.job_callback, self.data[i]))
 
@@ -316,6 +322,15 @@ class GluttonDB(object) :
         self.dirty = True
         self._write()
 
+    def _progress(self) :
+        self.complete_jobs += 1
+
+        sys.stderr.write("\rProgress: %d / %d prank alignments " % (self.complete_jobs, self.total_jobs))
+        sys.stderr.flush()
+
+        if self.complete_jobs == self.total_jobs :
+            print >> sys.stderr, "\ndone!"
+
     def job_callback(self, job) :
         self.log.debug("callback from %s - %s" % (str(job), job.input.id))
         self.log.debug("alignment file = %s" % job.alignment)
@@ -324,6 +339,8 @@ class GluttonDB(object) :
         # get a lock on the db
         self.lock.acquire()
         self.dirty = True
+
+        self._progress()
 
         # write alignment file
         # write tree file
@@ -335,13 +352,15 @@ class GluttonDB(object) :
         # release lock
         self.lock.release()
 
+    # this is only used by the aligner to give localsearch a file containing 
+    # protein sequences
     def extract_all(self) :
         fname = tmpfile()
 
         with open(fname, 'w') as f :
             for gf in self.data :
                 for g in self.data[gf] :
-                    print >> f, g.format('fasta').rstrip()
+                    print >> f, g.format('protein' if self.nucleotide else 'fasta').rstrip()
 
         return fname
 
