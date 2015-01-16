@@ -1,6 +1,6 @@
 import os
 
-from glutton.utils import get_log, tmpfasta, tmpfasta_orfs, tmpfile, rm_f, threadsafe_io
+from glutton.utils import get_log, tmpfasta, tmpfasta_orfs, tmpfile, rm_f, threadsafe_io, fasta_stats
 from glutton.prank import Prank
 from glutton.pagan import Pagan
 from glutton.blast import Blastx, Tblastx
@@ -9,7 +9,9 @@ from abc import abstractmethod
 from os.path import basename, isfile, join
 from sys import exit
 
-#import time
+import time
+
+DEBUG_TIMING = True
 
 
 class JobError(Exception) :
@@ -42,6 +44,9 @@ class Job(object) :
         return not self.success()
 
     def terminated(self) :
+        if self.state not in (Job.SUCCESS, Job.FAIL, Job.TERMINATED, Job.INTERNAL_ERROR) :
+            raise JobError('job has not been run')
+        
         return self.state == Job.TERMINATED
 
     def start(self) :
@@ -65,10 +70,11 @@ class Job(object) :
 
         if ret == 0 :
             self.end(Job.SUCCESS)
-        elif ret > 0 : 
-            self.end(Job.FAIL)
-        else :
+        elif ret == 130 : # SIGINT 
             self.end(Job.TERMINATED)
+        else :
+            self.end(Job.FAIL)
+
 
         if not self.terminated() :
             self.callback(self)
@@ -80,6 +86,7 @@ class Job(object) :
 
     # delete only the files the program created
     # the responsibility to delete the input files is for the caller
+    # - this is no longer true because the callers are passing data not filenames
     def cleanup(self) :
         for f in self._get_filenames() :
             if f and isfile(f) :
@@ -122,7 +129,20 @@ class PrankJob(Job) :
     def _run(self) :
         self.infile = tmpfasta(self.sequences)
 
-        return self.prank.run(self.infile, self.infile)
+
+        start_time = time.time()
+
+        result = self.prank.run(self.infile, self.infile)
+
+        elapsed_time = time.time() - start_time
+        q_count, q_sum, q_min, q_max, q_mean, q_sd = fasta_stats(self.infile)
+
+        threadsafe_io('prank_stats.txt', "%d %d %d %d %d %.3f %.3f %d" % \
+                                            (result, \
+                                             q_count, q_sum, q_min, q_max, q_mean, q_sd, \
+                                             elapsed_time))
+
+        return result
 
 class BlastJob(Job) :
     def __init__(self, callback, database, queries, blast_version='blastx') :
@@ -191,15 +211,22 @@ class PaganJob(Job) :
         self.tree_fname = tmpfile(self._tree) if self._tree else None
         
         
-        #start_time = time.time()
+        start_time = time.time()
         
         result = self.pagan.run(self.query_fname, 
                               self.out_fname, 
                               self.alignment_fname, 
                               self.tree_fname)
         
-        #end_time = time.time()
-        #threadsafe_io('pagan_times.txt', "%s %s %s %d" % (self.query_fname, self.alignment_fname, str(self.tree_fname), end_time - start_time))
+        elapsed_time = time.time() - start_time
+        q_count, q_sum, q_min, q_max, q_mean, q_sd = fasta_stats(self.query_fname)
+        a_count, a_sum, a_min, a_max, a_mean, a_sd = fasta_stats(self.alignment_fname)
+
+        threadsafe_io('pagan_stats.txt', "%d %d %d %d %d %.3f %.3f %d %d %d %d %.3f %.3f %d" % \
+                                            (result, \
+                                             q_count, q_sum, q_min, q_max, q_mean, q_sd, \
+                                             a_count, a_sum, a_min, a_max, a_mean, a_sd, \
+                                             elapsed_time))
         
         return result
 

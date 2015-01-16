@@ -8,7 +8,7 @@ from glutton.ensembl_sql import download_database_sql, get_all_species_sql, get_
 
 
 ENSEMBL_METHODS = ('biomart', 'sql', 'pycogent')
-DEFAULT_METHOD = 'sql'
+DEFAULT_METHOD = 'biomart'
 
 def set_ensembl_download_method(method) :
     global DEFAULT_METHOD, ENSEMBL_METHODS
@@ -36,14 +36,19 @@ class EnsemblDownloader(object) :
     #       the download code if Release is None
 
     def get_latest_release(self, species, database_name) :
-        if self.method in ('sql', 'pycogent') :
-            return get_latest_release_sql(species, database_name)
+        try :
+            if self.method in ('sql', 'pycogent') :
+                return get_latest_release_sql(species, database_name)
 
-        elif self.method == 'biomart' :
-            return get_latest_release_biomart(species, database_name)
+            elif self.method == 'biomart' :
+                return get_latest_release_biomart(species, database_name)
 
-        else :
-            self.log.fatal("%s not a valid download method" % method)
+            else :
+                self.log.fatal("%s not a valid download method" % method)
+                exit(1)
+
+        except KeyError :
+            self.log.fatal("%s not found in %s" % (species, database_name))
             exit(1)
 
     def get_all_species(self, db="", suppress=None) :

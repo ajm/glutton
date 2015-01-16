@@ -122,14 +122,15 @@ class WorkQueue(object):
             self.log.debug("starting %s" % str(work))
             work.run()
 
-            self.log.debug("completed %s %s" % (str(work), work.state_str()))
-            self.q.task_done()
-            self.jobs_completed = self.jobs_counter.next()
-
             # pagan et al can core dump resulting in a negative exit code, 
             # so just rely on the running flag for exiting the thread
             #if work.terminated() 
             if not self.running :
+                work.set_terminated()
                 self.log.warn("thread exiting...")
                 break
+
+            self.log.debug("completed %s %s" % (str(work), work.state_str()))
+            self.q.task_done()
+            self.jobs_completed = self.jobs_counter.next()
 

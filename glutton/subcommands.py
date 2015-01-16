@@ -20,6 +20,7 @@ def list_command(args) :
             'protists'  : 17,
             'plants'    : 17,
             'bacteria'  : 17,
+            'fungi'     : 17,
         }
 
     if not args.suppress :
@@ -47,7 +48,6 @@ def build_command(args) :
     def _cleanup(signal, frame) :
         print >> stderr, "Killed by user, cleaning up..."
         gdb.stop()
-        print >> stderr, "done"
         os._exit(0)
 
     signal.signal(signal.SIGINT, _cleanup)
@@ -69,13 +69,14 @@ def build_command(args) :
     return 0
 
 def check_command(args) :
-    return 0 if GluttonDB(args.gltfile).sanity_check(human_readable_summary=True, suppress_errmsg=True) else 1        
+    return 0 if GluttonDB(args.gltfile).sanity_check(human_readable_summary=True, suppress_errmsg=True, show_all=args.show) else 1        
 
 def align_command(args) :
-    gdb = GluttonDB(args.reference)
-    align = Aligner(gdb, 
-                    args.contigs, 
-                    args.alignments, 
+    contigs = zip(args.contigs, args.label, args.species) if args.contigs else []
+
+    align = Aligner(args.alignments,
+                    args.reference, 
+                    contigs, 
                     args.identity, 
                     args.length, 
                     args.batch_size)
@@ -93,11 +94,12 @@ def align_command(args) :
     return 0
 
 def scaffold_command(args) :
-    gdb = GluttonDB(args.reference)
-    scaf = Scaffolder(gdb,
-                      args.contigs, 
-                      args.alignments, 
-                      args.scaffolds)
+    contigs = zip(args.contigs, args.label, args.species) if args.contigs else []
+
+    scaf = Scaffolder(args.alignments, 
+                      args.reference,
+                      contigs,
+                      args.output)
 
     def _cleanup(signal, frame) :
         print >> stderr, "Killed by user, cleaning up..."

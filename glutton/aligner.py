@@ -17,9 +17,7 @@ from Bio import SeqIO
 
 
 class Aligner(object) :
-    def __init__(self, db, contigs_fname, directory, min_identity=0.9, min_length=1, batch_size=100) :
-        self.db = db
-        self.contigs_fname = contigs_fname
+    def __init__(self, directory, reference_fname, contig_files, min_identity=0.9, min_length=1, batch_size=100) :
         self.directory = directory
         self.min_identity = min_identity
         self.min_length = min_length
@@ -36,25 +34,29 @@ class Aligner(object) :
 
         self.log = get_log()
 
-        self.info = GluttonInformation(db, contigs_fname, directory)
+        self.info = GluttonInformation(directory, reference_fname, contig_files)
+        
+        self.db = self.info.get_db()    
 
-    def _read_contigs(self, fname) :
+    def _read_contigs(self) :
         contigs = {}
-        accepted = 0
-        rejected = 0
 
-        for r in SeqIO.parse(fname, 'fasta') :
-            if len(r) < self.min_length :
-                rejected += 1
-                continue
+        for fname,label,species in self.info.get_contig_files() :
+            accepted = 0
+            rejected = 0
 
-            qid = self.info.get_query_from_contig(r.id)
+            for r in SeqIO.parse(fname, 'fasta') :
+                if len(r) < self.min_length :
+                    rejected += 1
+                    continue
+
+                qid = self.info.get_query_from_contig(label, r.id)
             
-            contigs[qid] = biopy_to_gene(r, qid)
-            accepted += 1
+                contigs[qid] = biopy_to_gene(r, qid)
+                accepted += 1
 
-        self.log.info("read %d contigs (rejected %d due to length < %d)" % 
-                (accepted, rejected, self.min_length))
+            self.log.info("%s: read %d contigs (rejected %d due to length < %d)" % 
+                (fname, accepted, rejected, self.min_length))
 
         return contigs
 
@@ -74,7 +76,7 @@ class Aligner(object) :
 
         # convert the names of the contigs to something no program can complain about
         # + filter out the ones that could never have a long enough alignment
-        contigs = self._read_contigs(self.contigs_fname)
+        contigs = self._read_contigs()
 
         pending_contigs = [ contigs[i] for i in self.info.pending_queries() ]
 
@@ -118,7 +120,7 @@ class Aligner(object) :
         # queue all the alignments up using a work queue and pagan
         self.q = WorkQueue()
 
-        self.total_jobs = len(genefamily_contig_map)
+        self.total_jobs = len(genefamily_contig_map) - self.info.len_genefamily2filename()
         self.complete_jobs = -1
         self._progress()
 
@@ -136,8 +138,12 @@ class Aligner(object) :
                 alignment = self.db.get_alignment(famid)
                 tree = alignment.get_tree()
 
-            except GluttonDBFileError, gde :
+            except GluttonDBError, gde :
                 self.log.warn(str(gde))
+                continue
+
+            except GluttonDBFileError, gdfe :
+                self.log.warn(str(gdfe))
                 continue
 
             job_contigs = [ contigs[i] for i in genefamily_contig_map[famid] ]
@@ -152,7 +158,7 @@ class Aligner(object) :
                         tree)
                     )
             
-        self.log.info("waiting for job queue to drain...")
+        self.log.debug("waiting for job queue to drain...")
         self.q.join()
 
         self.info.flush()
@@ -184,14 +190,13 @@ class Aligner(object) :
 
         if job.success() :
             dst = tmpfile(directory=self.directory, suffix='.protein')
+            dst_base = basename(dst)[:-8]
 
             shutil.copyfile(job.protein_alignment, dst)
             
             if self.db.nucleotide :
                 shutil.copyfile(job.nucleotide_alignment, dst[:-8] + '.nucleotide')
         
-            dst_base = basename(dst)[:-8]
-
             self.info.put_genefamily2filename(job.genefamily, dst_base)
         else :
             self.info.put_genefamily2filename(job.genefamily)

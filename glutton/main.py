@@ -41,11 +41,11 @@ def handle_args(args) :
                          help='temporary directory')
         par.add_argument('--threads', type=int, default=num_threads(),
                          help='number of threads')
-        par.add_argument('-v', '--verbose',  action='count', default=0, 
+        par.add_argument('-v', '--verbose',  action='count', default=2, 
                          help='set verbosity, can be set multiple times e.g.: -vvv')
 
     def add_database_options(par) :
-        ensembl_db = ('ensembl', 'metazoa', 'fungi', 'protists', 'plants', 'bacteria')
+        ensembl_db = ('ensembl', 'metazoa', 'fungi', 'protists', 'plants')
 
         par.add_argument('-d', '--database-name', default='ensembl', metavar='DB', choices=ensembl_db,
                          help='specify main ensembl database or one of the ensembl-genomes databases, options are %s' % ', '.join(ensembl_db))
@@ -116,46 +116,62 @@ def handle_args(args) :
     parser_check = subparsers.add_parser('check', 
                               help='check %s database for errors/completeness' % glutton.__name__)
     parser_check.add_argument('gltfile')
+    parser_check.add_argument('-s', '--show', action='store_true',
+                              help='show which gene families have not been aligned')
 
     
     default_alignment_dir = './alignment_results'
+    default_scaffold_dir = './scaffold_results'
 
     # align options
     parser_align = subparsers.add_parser('align', formatter_class=fmt,
                               help='align contigs against reference transcript database')
-    parser_align.add_argument('-g', '--reference', type=str, required=True,
+    parser_align.add_argument('-g', '--reference', type=str,
                               help='reference database, (normally a .glt file)')
-    parser_align.add_argument('-c', '--contigs', type=str, required=True,
-                              help='fasta file containing contigs')
     parser_align.add_argument('-a', '--alignments', type=str, default=default_alignment_dir,
                               help='output directory to store alignment files')
-    parser_align.add_argument('-i', '--identity', type=check_zero_one, default=0.75,
+    parser_align.add_argument('-i', '--identity', type=check_zero_one, default=0.5,
                               help='minimum protein identity for local alignment step')
-    parser_align.add_argument('-l', '--length', type=check_non_negative, default=200,
+    parser_align.add_argument('-x', '--length', type=check_non_negative, default=200,
                               help='minimum contig length')
     parser_align.add_argument('-b', '--batch-size', type=check_greater_than_zero, default=100,
                               help='number of queries per batch for local alignment')
 
+    parser_align.add_argument('-c', '--contigs', type=str, action='append',
+                              help='fasta file containing contigs')
+    parser_align.add_argument('-l', '--label',   type=str, action='append',
+                              help='freeform label for file containing contigs (specified with --contigs)')
+    parser_align.add_argument('-s', '--species', type=str, action='append',
+                              help='species designation for file containing contigs (specified with --contigs)')
+
     add_generic_options(parser_align)
+
 
     # scaffold options
     parser_scaf = subparsers.add_parser('scaffold', formatter_class=fmt,
                              help='scaffold contigs together based on evolutionary alignment results')
-    parser_scaf.add_argument('-g', '--reference', type=str, required=True,
+    parser_scaf.add_argument('-g', '--reference', type=str,
                              help='reference database, (normally a .glt file)')
-    parser_scaf.add_argument('-c', '--contigs', type=str, required=True,
-                             help='fasta file containing contigs')
     parser_scaf.add_argument('-a', '--alignments', type=str, default=default_alignment_dir,
                              help='directory containing evolutionary alignments')
-#    parser_scaf.add_argument('-i', '--identity', type=check_zero_one, default=0.9,
-#                             help='minimum nucleotide identity for contig overlaps')
-    parser_scaf.add_argument('-s', '--scaffolds', type=str, default='scaffolds.fasta',
-                             help='output file for scaffolds')
+    parser_scaf.add_argument('-o', '--output', type=str, default=default_scaffold_dir,
+                             help='directory to output scaffolded contigs and MSAs')
+
+    parser_scaf.add_argument('-c', '--contigs', type=str, action='append',
+                             help='fasta file containing contigs')
+    parser_scaf.add_argument('-l', '--label',   type=str, action='append',
+                             help='freeform label for file containing contigs (specified with --contigs)')
+    parser_scaf.add_argument('-s', '--species', type=str, action='append',
+                             help='species designation for file containing contigs (specified with --contigs)')
 
     add_generic_options(parser_scaf)
 
+
     return parser.parse_args(args)
 
+# the reason i have used hasattr is becuase not all the parsers for
+# different subcommands have the same options, so they must be tested
+# for in order for this to be generic
 def generic_options(args) :
     # database
     if hasattr(args, 'database_host') and args.database_host :
@@ -185,6 +201,24 @@ def generic_options(args) :
     # ensembl download method
     if hasattr(args, 'download_method') :
         set_ensembl_download_method(args.download_method)
+
+    # contigs, labels, species
+    # contigs and labels must be unique
+    # length of contigs, label, species must be the same
+    if hasattr(args, 'contigs') :
+        if args.contigs :
+            if not args.label or not args.species :
+                print >> stderr, "ERROR: you must specify one --label and one --species argument per --contigs file!"
+                exit(1)
+
+            l = len(args.contigs)
+            if (l != len(args.label)) or (l != len(args.species)) :
+                print >> stderr, "ERROR: you must specify one --label and one --species argument per --contigs file! (%d files, %d labels, %d species)" % (l, len(args.label), len(args.species))
+                exit(1)
+
+            if (l != len(set(args.label))) :
+                print >> stderr, "ERROR: file labels must be unique!"
+                exit(1)
 
     setup_logging()
 

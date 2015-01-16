@@ -1,5 +1,5 @@
 from zipfile import ZipFile, ZIP_DEFLATED
-from sys import exit
+from sys import exit, stderr
 from os.path import exists
 import tempfile
 import os
@@ -142,9 +142,11 @@ class GluttonDB(object) :
 
     def _create_lookup_table(self, families) :
         tmp = {}
+
         for fid in families :
             for gene in families[fid] :
                 tmp[gene.id] = fid
+        
         return tmp
 
     def _valid_manifest(self, m) :
@@ -197,9 +199,9 @@ class GluttonDB(object) :
         else :
             # release not specified
             if not release :
-                    self.log.info("release not provided, getting latest release...")
-                    release = EnsemblDownloader().get_latest_release(species, database_name)
-                    self.log.info("latest release is %d" % release) 
+                self.log.info("release not provided, getting latest release...")
+                release = EnsemblDownloader().get_latest_release(species, database_name)
+                self.log.info("latest release is %d" % release) 
 
             # default name if it was not defined
             if not self.fname :
@@ -211,7 +213,7 @@ class GluttonDB(object) :
                 self.log.info("%s does not exist, starting from scratch..." % self.fname)
                 self._initialise_db(species, release, database_name, nucleotide)
 
-        # either way, we contents into memory
+        # either way, read contents into memory
         self._read()
 
 
@@ -274,7 +276,7 @@ class GluttonDB(object) :
         for i in unaligned :
             self.q.enqueue(PrankJob(self.job_callback, self.data[i]))
 
-        self.log.info("waiting for job queue to drain...")
+        self.log.debug("waiting for job queue to drain...")
 
         self.q.join()
 
@@ -325,11 +327,11 @@ class GluttonDB(object) :
     def _progress(self) :
         self.complete_jobs += 1
 
-        sys.stderr.write("\rProgress: %d / %d prank alignments " % (self.complete_jobs, self.total_jobs))
-        sys.stderr.flush()
+        stderr.write("\rProgress: %d / %d prank alignments " % (self.complete_jobs, self.total_jobs))
+        stderr.flush()
 
         if self.complete_jobs == self.total_jobs :
-            print >> sys.stderr, "\ndone!"
+            print >> stderr, "\ndone!"
 
     def job_callback(self, job) :
         self.log.debug("callback from %s - %s" % (str(job), job.input.id))
@@ -342,12 +344,15 @@ class GluttonDB(object) :
 
         self._progress()
 
-        # write alignment file
-        # write tree file
-        z = ZipFile(self.fname, 'a', compression=self.compression)
-        z.write(job.alignment, arcname = self._famid_to_alignment(job.input.id))
-        z.write(job.tree,      arcname = self._famid_to_tree(job.input.id))
-        z.close()
+        if job.success() :
+            # write alignment file
+            # write tree file
+            z = ZipFile(self.fname, 'a', compression=self.compression)
+            z.write(job.alignment, arcname = self._famid_to_alignment(job.input.id))
+            z.write(job.tree,      arcname = self._famid_to_tree(job.input.id))
+            z.close()
+        else :
+            self.log.error("Could not align gene family (%s)" % job.input.id)
 
         # release lock
         self.lock.release()
@@ -422,7 +427,7 @@ class GluttonDB(object) :
     def is_complete(self) :
         return self.sanity_check(suppress_errmsg=True)
 
-    def sanity_check(self, suppress_errmsg=False, human_readable_summary=False) :
+    def sanity_check(self, suppress_errmsg=False, human_readable_summary=False, show_all=False) :
         z = ZipFile(self.fname, 'r')
         listing = z.namelist()
         z.close()
@@ -437,6 +442,9 @@ class GluttonDB(object) :
             'error_notree'      : 0,
             'error_nofiles'     : 0
         }
+
+        bad_genefamilies = []
+
 
         for famid in self.data :
             gf_size = len(self.data[famid])
@@ -478,6 +486,9 @@ class GluttonDB(object) :
                 if (alignment_fname not in listing) and (tree_fname not in listing) :
                     summary['error_nofiles'] += 1
 
+                if (alignment_fname not in listing) or (tree_fname not in listing) :
+                    bad_genefamilies.append(famid)
+
         if insane :
             if not suppress_errmsg :
                 self.log.error("%s failed check" % self.fname)
@@ -500,8 +511,15 @@ class GluttonDB(object) :
             print "Missing alignments:", summary['error_noalignment']
             print "Missing phylogenetic trees:", summary['error_notree']
             print ""
-            print "FAIL!" if insane else "OK!"
+            print "FAIL! (to see missing families use --show option)" if insane else "OK!"
             print ""
+
+            if show_all and bad_genefamilies :
+                print "Missing gene families:"
+                print ""
+                for famid in sorted(bad_genefamilies) :
+                    print "\t%s\t(%s)" % (famid, ', '.join([ i.name for i in self.data[famid] ]))
+                print ""
 
         return not insane
 

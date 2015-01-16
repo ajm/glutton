@@ -1,10 +1,11 @@
-import sys
 import json
 import threading
 import collections
 
-from os.path import isfile, join
+from sys import stderr, exit
+from os.path import isfile, join, abspath
 
+from glutton.db import GluttonDB
 from glutton.utils import get_log, md5, check_dir
 
 
@@ -30,11 +31,8 @@ class GluttonException(Exception) :
     pass
 
 class GluttonInformation(object) :
-    def __init__(self, db, contigs_fname, alignments_dir) :
-        self.db = db
-        self.contigs_fname = contigs_fname
+    def __init__(self, alignments_dir, db_obj_or_filename=None, contig_files=[]) :
         self.directory = alignments_dir
-
         check_dir(self.directory)
 
         self.log = get_log()
@@ -45,19 +43,54 @@ class GluttonInformation(object) :
         # the parameters used are the same, i.e.: same reference database and maybe
         # more
         #
-        # blastx results are tricky because another object is doing that, so we need
-        # to query that object to get the information
-        #
-        # pagan results are easier because that is what this object is doing...
-        #
         self.params = {}
-        self.contig_query_map = {}          # contig id -> query id
+        self.contig_query_map = {}          # file id -> contig id -> query id (file id is provided by the user, called a 'label')
         self.query_gene_map = {}            # query id -> gene id
         self.genefamily_filename_map = {}   # gene family id -> filename
 
         self.read_progress_files()
 
-        self.check_params()
+        if ((not db_obj_or_filename) or (not contig_files)) and (not self.params) :
+            self.log.fatal("reference database and contig files must be specified if you are not continuing from a previous run!")
+            exit(1)
+
+        if isinstance(db_obj_or_filename, str) :
+            self.db = GluttonDB(db_obj_or_filename) 
+        elif isinstance(db_obj_or_filename, GluttonDB) :
+            self.db = db_obj_or_filename
+        elif db_obj_or_filename is None :
+            self.db = GluttonDB(self.params['db_filename'])
+
+        # contig files may not be specified if the command is being restarted
+        # check that the files are there and that the contents is the same as
+        # the last time we saw it
+        try :
+            self.check_params(contig_files if contig_files else self.get_contig_files())
+
+        except IOError, ioe :
+            self.log.fatal(str(ioe))
+            
+            if not contig_files :
+                self.log.fatal("this file appears to have moved, respecify with --contigs")
+            
+            exit(1)    
+
+        
+
+    def get_db(self) :
+        return self.db
+
+    def get_contig_files(self) :
+        tmp = []
+
+        for filename in self.params['contig_files'] :
+            label,species,checksum = self.params['contig_files'][filename]
+            tmp.append((filename, label, species))
+
+        return tmp
+
+    def get_labels(self) :
+        return [ self.params['contig_files'][f][0] for f in self.params['contig_files'] ]
 
     # files used for recording the progress are just dirty globals
     # at the moment these properties can be in place of a decent solution
@@ -107,7 +140,7 @@ class GluttonInformation(object) :
         self.genefamily_filename_map    = self._load(self.pagan_filename)
 
         if self.contig_query_map :
-            self.log.info("read %d contig to query id mappings" % len(self.contig_query_map))
+            self.log.info("read %d contig to query id mappings" % sum([ len(self.contig_query_map[label]) for label in self.contig_query_map ]))
 
         if self.query_gene_map :
             self.log.info("read %d blast results" % len(self.query_gene_map))
@@ -119,12 +152,12 @@ class GluttonInformation(object) :
     def write_progress_files(self) :
         self._dump(self.parameter_filename, self.params)
         self._dump(self.contig_filename,    self.contig_query_map)
-        self._dump(self.blast_filename,    self.query_gene_map)
+        self._dump(self.blast_filename,     self.query_gene_map)
         self._dump(self.pagan_filename,     self.genefamily_filename_map)
 
     # related to database parameters
     #
-    def get_params(self) :
+    def get_params(self, contig_files) :
         p = {}
 
         p['db_species']  = self.db.species
@@ -132,39 +165,66 @@ class GluttonInformation(object) :
         p['db_filename'] = self.db.filename
         p['db_checksum'] = self.db.checksum
 
-        p['contig_filename'] = self.contigs_fname
-        p['contig_checksum'] = md5(self.contigs_fname)
+        p['contig_files'] = {}
+
+        for filename,label,species in contig_files :
+            abs_filename = abspath(filename)
+            p['contig_files'][abs_filename] = [label, species, md5(abs_filename)]
 
         return p
 
     @do_locking
-    def check_params(self) :
-        db_params = self.get_params()
+    def check_params(self, contig_files) :
+        db_params = self.get_params(contig_files)
 
         if not self.params :
             self.params = db_params
             return
         
         if self._not_same_db(db_params) :
-            self.log.fatal("alignment has been resumed with a different reference!")
-            self.log.fatal("\toriginal = %s" % self._param_str(self.params))
-            self.log.fatal("\tcurrent  = %s" % self._param_str(db_params))
-            sys.exit(1)
+            self.log.fatal("found different reference/input files/parameters!")
+            
+            self.log.fatal("original:")
+            self._print_params(self.params)
+            
+            self.log.fatal("current:")
+            self._print_params(db_params)
+            
+            exit(1)
 
-    def _param_str(self, p) :
-        return "%s/%d %s md5=%s" % (p['db_species'], p['db_release'], p['contig_filename'], p['contig_checksum'])
+        # this might seem odd, but the parameters can be the same (i.e. the contents of
+        # the files is the same), but the actual locations of the files can change,
+        # so just set it globally
+        self.params = db_params
+
+    def _print_params(self, p) :
+        self.log.fatal("%s/%d" % (p['db_species'], p['db_release']))
+
+        for filename in p['contig_files'] :
+            label, species, checksum = p['contig_files'][filename]
+            self.log.fatal("\t%s label=%s species=%s md5=%s" % (filename, label, species, checksum))
 
     def _not_same_db(self, par) :
-        return (self.params['db_checksum'] != par['db_checksum']) or \
-               (self.params['contig_checksum'] != par['contig_checksum'])
+        def get_checksums(p) :
+            return sorted([ p['db_checksum'] ] + [ p['contig_files'][f] for f in p['contig_files'] ])
+
+        return get_checksums(self.params) != get_checksums(par)
+
+    def _set_id_counter(self) :
+        tmp = [0]
+        for label in self.contig_query_map :
+            for i in self.contig_query_map[label].values() :
+                tmp.append(int(i[len(QUERY_ID):]))
+
+        self.query_id_counter = 1 + max(tmp)
 
     # contig to query ids are only get
     @do_locking
-    def get_query_from_contig(self, contig_id) :
+    def get_query_from_contig(self, label, contig_id) :
         global QUERY_ID
 
         try :
-            return self.contig_query_map[contig_id]
+            return self.contig_query_map[label][contig_id]
 
         except KeyError :
             pass
@@ -173,12 +233,15 @@ class GluttonInformation(object) :
         #   if there is no attribute in this class called something, then
         #   just create it and initialise it to a sensible value
         if not hasattr(self, 'query_id_counter') :
-            self.query_id_counter = 1 + max([0] + [ int(i[len(QUERY_ID):]) for i in self.contig_query_map.values() ])
+            self._set_id_counter()
 
         new_query_id = "%s%d" % (QUERY_ID, self.query_id_counter)
         self.query_id_counter += 1
 
-        self.contig_query_map[contig_id] = new_query_id
+        if label not in self.contig_query_map :
+            self.contig_query_map[label] = {}
+
+        self.contig_query_map[label][contig_id] = new_query_id
 
         return new_query_id
 
@@ -219,7 +282,30 @@ class GluttonInformation(object) :
 
     @do_locking
     def pending_queries(self) :
-        return [ i for i in self.contig_query_map.values() if i not in self.query_gene_map ]
+        tmp = []
+
+        for label in self.contig_query_map :
+            for i in self.contig_query_map[label].values() :
+                if i not in self.query_gene_map :
+                    tmp.append(i)
+
+        return tmp
+
+    @do_locking
+    def num_alignments_not_done(self) :
+        genefamily_contig_map = self.build_genefamily2contigs()
+        not_done = 0
+        failures = 0
+
+        for i in genefamily_contig_map :
+            if i not in self.genefamily_filename_map :
+                not_done += 1
+                continue
+
+            if self.genefamily_filename_map[i] == 'FAIL' :
+                failures += 1
+
+        return not_done, failures
 
     @do_locking
     def alignments_complete(self) :
@@ -231,31 +317,63 @@ class GluttonInformation(object) :
 
         return True
 
+    # filenames are relative file paths, what if they change between
+    # runs? checksum is expensive, but safe...
+    def _filename_to_label_via_checksum(self, filename) :
+        return self._checksum_to_label(md5(filename))
+
+    def _checksum_to_label(self, checksum) :
+        for fname in self.params['contig_files'] :
+            label,species,csum = self.params['contig_files'][fname]
+            if checksum == csum :
+                return label
+
+        raise Exception("file with checksum %s does not exist" % checksum)
+
+    def label_to_species(self, label) :
+        for fname in self.params['contig_files'] :
+            lab,species,checksum = self.params['contig_files'][fname]
+            if label == lab :
+                return species
+
+        raise Exception("file label %s does not exist" % label)
+
+    def _filename_to_label(self, filename) :
+        return self.params['contig_files'][filename][0]
+
+    def filename_to_label(self, filename) :
+        return self._filename_to_label_via_checksum(filename)
+
     # functions used by scaffolder
     #
     @do_locking
-    def contig_used(self, contig_id) :
-        return contig_id in self.contig_query_map
+    def contig_used(self, contig_id, label) :
+        return contig_id in self.contig_query_map[label]
 
     @do_locking
-    def contig_assigned(self, contig_id) :
-        qid = self.contig_query_map[contig_id]
+    def contig_assigned(self, contig_id, label) :
+        qid = self.contig_query_map[label][contig_id]
 
         return self.query_gene_map[qid] != 'FAIL'
 
-    @do_locking
-    def contig_aligned(self, contig_id) :
-        qid = self.contig_query_map[contig_id]
-        gid = self.query_gene_map[qid]
-        gfid = self.db.get_genefamily_from_gene(gid)
-        
-        return self.genefamily_filename_map[gfid] != 'FAIL'
+#    @do_locking
+#    def contig_aligned(self, contig_id) :
+#        qid = self.contig_query_map[contig_id]
+#        gid = self.query_gene_map[qid]
+#        gfid = self.db.get_genefamily_from_gene(gid)
+#        
+#        return self.genefamily_filename_map[gfid] != 'FAIL'
 
     @do_locking
     def get_contig_from_query(self, query_id) :
         # lazy reverse lookup
         if not hasattr(self, 'query_contig_map') :
-            self.query_contig_map = dict([ (q,c) for c,q in self.contig_query_map.items() ])
+            self.query_contig_map = {}
+
+            for label in self.contig_query_map :
+                cqm = self.contig_query_map[label]
+                for contig_id in cqm :
+                    self.query_contig_map[cqm[contig_id]] = (contig_id, label)
 
         if isinstance(query_id, list) :
             return [ self.query_contig_map[i] for i in query_id ]

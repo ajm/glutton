@@ -125,14 +125,14 @@ def get_all_species_biomart(database_name, suppress) :
 # a ReleaseNotFoundException if it is not the most recent one
 def download_database_biomart(species, release, database_name='ensembl', nucleotide=True) :
     
-    mart_name, schema_name, mart_release, db_name, species_desc = get_all_species(get_marts(database_name), database_name)[species]
+    mart_name, schema_name, mart_release, table_name, species_desc = get_all_species(get_marts(database_name), database_name)[species]
 
     if mart_release != release :
         get_log().fatal("requested release (%d) does not match current biomart release (%d)" % (release, mart_release))
         exit(1)
 
-    seq = get_sequences(species, schema_name, db_name, nucleotide)
-    homo = get_homology_info(species, schema_name, db_name, nucleotide)
+    seq = get_sequences(species, database_name, schema_name, table_name, nucleotide)
+    homo = get_homology_info(species, database_name, schema_name, table_name, nucleotide)
 
     return group_into_families(seq, homo)
 
@@ -157,10 +157,11 @@ def group_into_families(peptides, homologies) :
 
     return all_families
 
-def get_sequences(species, schema_name, db_name, nucleotide) :
-    global TIMEOUT, URL    
+def get_sequences(species, database_name, schema_name, table_name, nucleotide) :
+    global TIMEOUT
     
-    get_log().debug("getting sequences...")
+    log = get_log()
+    log.debug("getting sequences...")
 
     payload_sequences = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE Query>
@@ -174,13 +175,13 @@ def get_sequences(species, schema_name, db_name, nucleotide) :
     # e.g. 'dipodomys_ordii': ('dordii_gene_ensembl', 'Dipodomys ordii genes (dipOrd1)')
     #
     seq_type = 'cdna' if nucleotide else 'peptide'
-    query = payload_sequences % (schema_name, db_name, seq_type)
+    query = payload_sequences % (schema_name if database_name != 'ensembl' else 'default', table_name, seq_type)
     params = urllib.urlencode({ 'query' : query })
 
     sequences = {}
 
     try :
-        f = urllib2.urlopen(URL, params)
+        f = urllib2.urlopen(get_URL(database_name), params)
 
     except urllib2.URLError, ue :
         log.fatal("biomart sequence query error (%s)" % str(ue))
@@ -199,10 +200,11 @@ def get_sequences(species, schema_name, db_name, nucleotide) :
 
     return sequences
 
-def get_homology_info(species, schema_name, db_name, nucleotide) :
-    global TIMEOUT, URL
+def get_homology_info(species, database_name, schema_name, table_name, nucleotide) :
+    global TIMEOUT
 
-    get_log().debug("getting homology...")
+    log = get_log()
+    log.debug("getting homology...")
 
     payload_homology = """<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE Query>
@@ -214,21 +216,21 @@ def get_homology_info(species, schema_name, db_name, nucleotide) :
 </Query>"""
 
     # is this always correct?
-    short_species_name = db_name.split('_')[0]
+    short_species_name = table_name.split('_')[0]
 
     # this does not seem like a great idea, but until it breaks
     # it will do...
-    if '_eg_' in db_name :
+    if '_eg_' in table_name :
         paralog_name = short_species_name + '_eg_paralog_gene'
     else :
         paralog_name = short_species_name + '_paralog_ensembl_gene'
 
-    query2 = payload_homology % (schema_name, db_name, paralog_name)
+    query2 = payload_homology % (schema_name, table_name, paralog_name)
     params2 = urllib.urlencode({ 'query' : query2 })
 
     # make api call
     try :
-        f = urllib2.urlopen(URL, params2)
+        f = urllib2.urlopen(get_URL(database_name), params2)
 
     except urllib2.URLError, ue :
         log.fatal("biomart homology query error (%s)" % str(ue))
@@ -269,6 +271,6 @@ if __name__ == '__main__' :
 
     #print get_all_species(get_marts())
 
-    #download_database_biomart('homo_sapiens')
-    download_database_biomart('tribolium_castaneum')
+    download_database_biomart('homo_sapiens')
+    #download_database_biomart('tribolium_castaneum')
 

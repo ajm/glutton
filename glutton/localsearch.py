@@ -46,7 +46,7 @@ class All_vs_all_search(object) :
 
         # creates db + {phr,pin,psq} in same dir as db
         self.log.info("creating blast db...")
-        Blast.makedb(db)
+        Blast.makedb(db) # XXX THIS IS ALWAYS PROTEIN, BECAUSE WE WANT TO RUN BLASTX
 
         # queue up the jobs
         self.log.info("starting local alignments...")
@@ -59,7 +59,7 @@ class All_vs_all_search(object) :
         for query in self._batch(queries) :
             self.q.enqueue(BlastJob(self.job_callback, db, query, 'blastx'))
 
-        self.log.info("waiting for job queue to drain...")
+        self.log.debug("waiting for job queue to drain...")
         self.q.join()
 
         rm_f(self.cleanup_files)

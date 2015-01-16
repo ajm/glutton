@@ -4,9 +4,13 @@ import logging
 import platform
 import hashlib
 import threading
+import signal
 
 from sys import exit
 from multiprocessing import cpu_count
+from math import sqrt
+
+from Bio import SeqIO
 
 
 def tmpfile(contents=None, directory=None, suffix='') :
@@ -101,6 +105,25 @@ def tmpfasta(seq) :
             print >> f, seq.format('fasta').rstrip()
 
     return fname
+
+# returns count, total, min, max, mean, pop sd
+def _stats(dat) :
+    dat.sort()
+
+    count = float(len(dat))
+    mean = sum(dat) / count
+
+    sd = sqrt(sum([ (i - mean) ** 2 for i in dat ]) / count)
+
+    return len(dat), sum(dat), dat[0], dat[-1], mean, sd
+
+def fasta_stats(fname) :
+    data = []
+    
+    for s in SeqIO.parse(fname, 'fasta') :
+        data.append(len(s))
+
+    return _stats(data)
 
 def _write_six_orfs(fout, seq) :
     for i in range(3) :
