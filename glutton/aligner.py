@@ -17,10 +17,11 @@ from Bio import SeqIO
 
 
 class Aligner(object) :
-    def __init__(self, directory, reference_fname, contig_files, min_identity=0.9, min_length=1, batch_size=100) :
+    def __init__(self, directory, reference_fname, contig_files, min_identity, min_length, min_coverage, batch_size) :
         self.directory = directory
         self.min_identity = min_identity
         self.min_length = min_length
+        self.min_coverage = min_coverage
 
         check_dir(self.directory, create=True)
 
@@ -96,7 +97,8 @@ class Aligner(object) :
                     pending_contigs,
                     self.db.nucleotide,
                     self.min_identity, 
-                    self.min_length / 3)
+                    self.min_length / 3,
+                    self.min_coverage)
                 )
 
             rm_f(db_fname)

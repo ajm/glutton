@@ -78,7 +78,8 @@ def align_command(args) :
                     args.reference, 
                     contigs, 
                     args.identity, 
-                    args.length, 
+                    args.length,
+                    args.coverage,
                     args.batch_size)
 
     def _cleanup(signal, frame) :

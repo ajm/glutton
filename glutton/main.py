@@ -130,8 +130,10 @@ def handle_args(args) :
                               help='reference database, (normally a .glt file)')
     parser_align.add_argument('-a', '--alignments', type=str, default=default_alignment_dir,
                               help='output directory to store alignment files')
-    parser_align.add_argument('-i', '--identity', type=check_zero_one, default=0.5,
+    parser_align.add_argument('-i', '--identity', type=check_zero_one, default=0.75,
                               help='minimum protein identity for local alignment step')
+    parser_align.add_argument('-e', '--coverage', type=check_zero_one, default=0.75,
+                              help='minimum coverage for local alignment step')
     parser_align.add_argument('-x', '--length', type=check_non_negative, default=200,
                               help='minimum contig length')
     parser_align.add_argument('-b', '--batch-size', type=check_greater_than_zero, default=100,

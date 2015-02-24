@@ -126,7 +126,6 @@ class WorkQueue(object):
             # so just rely on the running flag for exiting the thread
             #if work.terminated() 
             if not self.running :
-                work.set_terminated()
                 self.log.warn("thread exiting...")
                 break
 

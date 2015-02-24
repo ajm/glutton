@@ -170,7 +170,17 @@ class BlastJob(Job) :
         self.query_fname = tmpfasta(self.queries)
         self.out_fname = tmpfile()
 
-        return self.blastx.run(self.query_fname, self.database, self.out_fname)
+        result = self.blastx.run(self.query_fname, self.database, self.out_fname)
+
+        q = dict([ (q.id, q) for q in self.input ])
+        for contig,geneid,identity,length in self.results :
+            threadsafe_io('blastx_stats.txt', "%s %s %.3f %d %.3f" % (contig, 
+                                                                      geneid, 
+                                                                      identity, 
+                                                                      length, 
+                                                                      length / float(len(q[contig]))))
+
+        return result
 
 class PaganJob(Job) :
     def __init__(self, callback, queries, genefamily_id, alignment, tree) :

@@ -36,9 +36,10 @@ class All_vs_all_search(object) :
 
         yield tmp
 
-    def process(self, db, queries, nucleotide, min_identity, min_alignment_length) :
+    def process(self, db, queries, nucleotide, min_identity, min_alignment_length, min_contig_coverage) :
         self.min_identity = 100 * min_identity
         self.min_length = min_alignment_length
+        self.min_coverage = min_contig_coverage
 
         # we need to deal with the index files here because 
         # all of the blastx jobs need them
@@ -94,8 +95,12 @@ class All_vs_all_search(object) :
         self._progress()
 
         if job.success() :
+            queries = dict([ (q.id, q) for q in job.input ])
+
             for contig,geneid,identity,length in job.results :
-                if length < self.min_length or identity < self.min_identity :
+                coverage = length / float(len(queries[contig]))
+                
+                if coverage < self.min_coverage or identity < self.min_identity :
                     continue
 
                 self.gene_assignments[contig] = geneid
