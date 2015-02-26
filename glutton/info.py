@@ -36,13 +36,12 @@ class GluttonInformation(object) :
         check_dir(self.directory)
 
         self.log = get_log()
-        self.lock = threading.RLock() # a single call requires this be an RLock over a Lock
+        self.lock = threading.RLock() # a single function requires this be an RLock over a Lock
 
         # the alignment procedure can take a long time, so everything needs to be 
         # restartable, in addition - if we restart it then we need to be sure that 
-        # the parameters used are the same, i.e.: same reference database and maybe
-        # more
-        #
+        # the parameters used are the same, i.e.: same reference database etc etc
+
         self.params = {}
         self.contig_query_map = {}          # file id -> contig id -> query id (file id is provided by the user, called a 'label')
         self.query_gene_map = {}            # query id -> gene id
@@ -61,21 +60,25 @@ class GluttonInformation(object) :
         elif db_obj_or_filename is None :
             self.db = GluttonDB(self.params['db_filename'])
 
-        # contig files may not be specified if the command is being restarted
-        # check that the files are there and that the contents is the same as
-        # the last time we saw it
-        try :
-            self.check_params(contig_files if contig_files else self.get_contig_files())
+        db_params = self.get_params(contig_files)
 
-        except IOError, ioe :
-            self.log.fatal(str(ioe))
-            
-            if not contig_files :
-                self.log.fatal("this file appears to have moved, respecify with --contigs")
-            
-            exit(1)    
+        if not self.params :
+            self.params = self.get_params(contig_files)
+            self.write_progress_files()
+        else :
+            # contig files may not be specified if the command is being restarted
+            # check that the files are there and that the contents is the same as
+            # the last time we saw it
+            try :
+                self.check_params(contig_files if contig_files else self.get_contig_files())
 
-        
+            except IOError, ioe :
+                self.log.fatal(str(ioe))
+            
+                if not contig_files :
+                    self.log.fatal("contig files appear to have moved, respecify with --contigs")
+            
+                exit(1)
 
     def get_db(self) :
         return self.db
@@ -177,10 +180,6 @@ class GluttonInformation(object) :
     def check_params(self, contig_files) :
         db_params = self.get_params(contig_files)
 
-        if not self.params :
-            self.params = db_params
-            return
-        
         if self._not_same_db(db_params) :
             self.log.fatal("found different reference/input files/parameters!")
             
@@ -196,6 +195,7 @@ class GluttonInformation(object) :
         # the files is the same), but the actual locations of the files can change,
         # so just set it globally
         self.params = db_params
+        self.write_progress_files()
 
     def _print_params(self, p) :
         self.log.fatal("%s/%d" % (p['db_species'], p['db_release']))
