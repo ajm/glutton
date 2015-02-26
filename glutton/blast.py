@@ -55,10 +55,12 @@ class Blast(ExternalTool) :
 
     def parse_result(self, s) :
         casts = defaultdict(lambda : int)
+        # query315807,gene7887,29.85,67,34,2,38,208,441,504,0.16,29.3
         casts.update({ 0 : str, 
                        1 : str, 
                        2 : float, 
-                       10 : float })
+                       10 : float,
+                       11 : float})
 
         return BlastResult(*[ casts[i](v) for i,v in enumerate(s.split(",")) ])
 
