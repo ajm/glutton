@@ -68,7 +68,7 @@ class Blast(ExternalTool) :
             "-db", database,
             "-out", outfile,
             "-max_target_seqs", "1",
-            "-outfmt", "6"
+            "-outfmt", "10"
             ]
 
         returncode, output = self._execute(parameters, [])
