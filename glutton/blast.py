@@ -1,10 +1,24 @@
 from glutton.base import ExternalTool
 from glutton.utils import get_log
 
+from collections import namedtuple, defaultdict
 from sys import exit
 import subprocess
 import os
 
+
+BlastResult = namedtuple('BlastResult', ["qseqid", 
+                                         "sseqid", 
+                                         "pident", 
+                                         "length", 
+                                         "mismatch", 
+                                         "gapopen", 
+                                         "qstart", 
+                                         "qend", 
+                                         "sstart", 
+                                         "send", 
+                                         "evalue", 
+                                         "bitscore"])
 
 class Blast(ExternalTool) :
     def __init__(self) :
@@ -39,6 +53,15 @@ class Blast(ExternalTool) :
     def results(self) :
         return self._results
 
+    def parse_result(self, s) :
+        casts = defaultdict(lambda : int)
+        casts.update({ 0 : str, 
+                       1 : str, 
+                       2 : float, 
+                       10 : float })
+
+        return BlastResult(*[ casts[i](v) for i,v in enumerate(s.split(",")) ])
+
     def run(self, query, database, outfile) :
         parameters = [
             "-query", query,
@@ -58,10 +81,7 @@ class Blast(ExternalTool) :
                     continue
 
                 try :
-                    contig,gene,identity,length = line.split()[:4]
-                    identity = float(identity)
-                    length = int(length)
-                    self._results.append((contig,gene,identity,length))            
+                    self._results.append(self.parse_result(line))
 
                 except ValueError :
                     self.log.warn("bad line returned by %s (%s)" % (self.name, line))

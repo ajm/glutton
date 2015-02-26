@@ -97,13 +97,13 @@ class All_vs_all_search(object) :
         if job.success() :
             queries = dict([ (q.id, q) for q in job.input ])
 
-            for contig,geneid,identity,length in job.results :
-                coverage = length / float(len(queries[contig]))
+            for br in job.results :
+                query_identity = ((br.pident / 100.0) * br.length) / float(len(queries[br.qseqid]))
                 
-                if coverage < self.min_coverage or identity < self.min_identity :
+                if query_identity < self.min_identity :
                     continue
 
-                self.gene_assignments[contig] = geneid
+                self.gene_assignments[br.qseqid] = br.sseqid
 
         for q in job.input :
             if q.id not in self.gene_assignments :

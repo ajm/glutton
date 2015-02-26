@@ -173,12 +173,13 @@ class BlastJob(Job) :
         result = self.blastx.run(self.query_fname, self.database, self.out_fname)
 
         q = dict([ (q.id, q) for q in self.input ])
-        for contig,geneid,identity,length in self.results :
-            threadsafe_io('blastx_stats.txt', "%s %s %.3f %d %.3f" % (contig, 
-                                                                      geneid, 
-                                                                      identity, 
-                                                                      length, 
-                                                                      length / float(len(q[contig]))))
+        for br in self.results :
+            threadsafe_io('blastx_stats.txt', "%s %s %.3f %d %.3e %.3f" % (br.qseqid, 
+                                                                           br.sseqid, 
+                                                                           br.pident, 
+                                                                           br.length, 
+                                                                           br.evalue,
+                                                                           br.length / float(len(q[br.qseqid]))))
 
         return result
 
