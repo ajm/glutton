@@ -172,14 +172,20 @@ class BlastJob(Job) :
 
         result = self.blastx.run(self.query_fname, self.database, self.out_fname)
 
-        q = dict([ (q.id, q) for q in self.input ])
+        q = dict([ (q.id, len(q)) for q in self.input ])
         for br in self.results :
-            threadsafe_io('blastx_stats.txt', "%s %s %.3f %d %.3e %.3f" % (br.qseqid, 
+            threadsafe_io('blastx_stats.txt', "%s %s %.3f %d %d %d %d %d %.3e %d %.3f" % \
+                                                                          (br.qseqid, 
                                                                            br.sseqid, 
                                                                            br.pident, 
                                                                            br.length, 
+                                                                           br.qstart,
+                                                                           br.qend,
+                                                                           br.sstart,
+                                                                           br.send,
                                                                            br.evalue,
-                                                                           br.length / float(len(q[br.qseqid]))))
+                                                                           q[br.qseqid],
+                                                                           ((br.pident / 100.0) * (max(br.qstart, br.qend) - min(br.qstart, br.qend))) / float(q[br.qseqid])))
 
         return result
 

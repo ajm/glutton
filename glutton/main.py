@@ -63,7 +63,7 @@ def handle_args(args) :
         if x < 0.0 or x > 1.0 :
             raise argparse.ArgumentTypeError("%s is not in the range [0.0,1.0]" % v)
         return x
-    
+
     def check_non_negative(v) :
         x = int(v)
         if x < 0 :
@@ -130,13 +130,20 @@ def handle_args(args) :
                               help='reference database, (normally a .glt file)')
     parser_align.add_argument('-a', '--alignments', type=str, default=default_alignment_dir,
                               help='output directory to store alignment files')
+    
+    parser_align.add_argument('-I', '--hitidentity', type=check_zero_one, default=0.0,
+                              help='minimum blast hit identity')
+    parser_align.add_argument('-L', '--hitlength', type=check_non_negative, default=0,
+                              help='minimum blast hit length')
+    parser_align.add_argument('-E', '--evalue', type=float, default=1e-4,
+                              help='maximum blast hit E value')
+
     parser_align.add_argument('-i', '--identity', type=check_zero_one, default=0.75,
-                              help='minimum protein identity for local alignment step')
-    parser_align.add_argument('-e', '--coverage', type=check_zero_one, default=0.75,
-                              help='minimum coverage for local alignment step')
+                              help='minimum query identity for gene assignment step')
     parser_align.add_argument('-x', '--length', type=check_non_negative, default=200,
-                              help='minimum contig length')
-    parser_align.add_argument('-b', '--batch-size', type=check_greater_than_zero, default=100,
+                              help='minimum contig length for gene assignment step')
+
+    parser_align.add_argument('-b', '--batchsize', type=check_greater_than_zero, default=100,
                               help='number of queries per batch for local alignment')
 
     parser_align.add_argument('-c', '--contigs', type=str, action='append',

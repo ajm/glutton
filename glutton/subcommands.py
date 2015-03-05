@@ -79,8 +79,10 @@ def align_command(args) :
                     contigs, 
                     args.identity, 
                     args.length,
-                    args.coverage,
-                    args.batch_size)
+                    args.hitidentity,
+                    args.hitlength,
+                    args.evalue,
+                    args.batchsize)
 
     def _cleanup(signal, frame) :
         print >> stderr, "Killed by user, cleaning up..."

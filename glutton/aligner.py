@@ -17,11 +17,13 @@ from Bio import SeqIO
 
 
 class Aligner(object) :
-    def __init__(self, directory, reference_fname, contig_files, min_identity, min_length, min_coverage, batch_size) :
+    def __init__(self, directory, reference_fname, contig_files, min_identity, min_length, min_hitidentity, min_hitlength, max_evalue, batch_size) :
         self.directory = directory
-        self.min_identity = min_identity
-        self.min_length = min_length
-        self.min_coverage = min_coverage
+        self.min_identity = min_identity # glutton
+        self.min_length = min_length # glutton
+        self.min_hitidentity = min_hitidentity # blast 
+        self.min_hitlength = min_hitlength # blast
+        self.max_evalue = max_evalue # blast
 
         check_dir(self.directory, create=True)
 
@@ -97,8 +99,9 @@ class Aligner(object) :
                     pending_contigs,
                     self.db.nucleotide,
                     self.min_identity, 
-                    self.min_length / 3,
-                    self.min_coverage)
+                    self.min_hitidentity,
+                    self.min_hitlength,
+                    self.max_evalue)
                 )
 
             rm_f(db_fname)
