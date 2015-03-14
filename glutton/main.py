@@ -6,6 +6,7 @@ if version_info < (2,7) :
 
 import time
 import argparse
+import os
 
 import glutton
 import glutton.subcommands
@@ -96,14 +97,15 @@ def handle_args(args) :
     # build options
     parser_build = subparsers.add_parser('build', formatter_class=fmt,
                               help='build reference transcript database from ensembl')
-    parser_build.add_argument('-s', '--species', type=str, required=True,
+    parser_build.add_argument('gltfile', nargs='?')
+    parser_build.add_argument('-s', '--species', type=str,
                               help='ensembl species name (see list command output)')
     parser_build.add_argument('-r', '--release', type=int, 
                               help='ensembl release number (default: the latest release)')
     parser_build.add_argument('-o', '--output',  type=str, 
                               help='output filename (default: SPECIES_RELEASE.glt)')
-    parser_build.add_argument('-p', '--protein', action='store_true',
-                              help='download protein sequences instead of cDNA sequences')
+#    parser_build.add_argument('-p', '--protein', action='store_true',
+#                              help='download protein sequences instead of CDS sequences')
     parser_build.add_argument('--download-only', action='store_true',
                               help='download sequences and homology information, then exit')
     parser_build.add_argument('-m', '--download-method', default='biomart', metavar='METHOD', choices=ensembl_methods,
@@ -135,7 +137,7 @@ def handle_args(args) :
                               help='minimum blast hit identity')
     parser_align.add_argument('-L', '--hitlength', type=check_non_negative, default=0,
                               help='minimum blast hit length')
-    parser_align.add_argument('-E', '--evalue', type=float, default=1e-4,
+    parser_align.add_argument('-E', '--evalue', type=float, default=1e-3,
                               help='maximum blast hit E value')
 
     parser_align.add_argument('-i', '--identity', type=check_zero_one, default=0.75,
@@ -202,6 +204,14 @@ def generic_options(args) :
         except OSError :
             print >> stderr, "ERROR: %s does not exist..." % args.tmpdir 
             exit(1)
+
+    # gltfile
+    if hasattr(args, 'gltfile') and args.gltfile :
+        if not os.path.isfile(args.gltfile) :
+            print >> stderr, "ERROR: %s does not exist..." % args.gltfile
+            exit(1)
+
+        args.output = args.gltfile
 
     # verbosity
     if hasattr(args, 'verbose') :

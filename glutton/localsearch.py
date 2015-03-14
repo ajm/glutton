@@ -112,7 +112,7 @@ class All_vs_all_search(object) :
                         (self.min_hitlength > length) :
                     continue
 
-                contig_identity = ((br.pident / 100.0) * length) / float(len(qlen[br.qseqid]))
+                contig_identity = ((br.pident / 100.0) * length) / float(qlen[br.qseqid])
 
                 if contig_identity < self.min_identity :
                     continue

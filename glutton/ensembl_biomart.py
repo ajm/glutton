@@ -174,7 +174,7 @@ def get_sequences(species, database_name, schema_name, table_name, nucleotide) :
 
     # e.g. 'dipodomys_ordii': ('dordii_gene_ensembl', 'Dipodomys ordii genes (dipOrd1)')
     #
-    seq_type = 'cdna' if nucleotide else 'peptide'
+    seq_type = 'coding' if nucleotide else 'peptide'
     query = payload_sequences % (schema_name if database_name != 'ensembl' else 'default', table_name, seq_type)
     params = urllib.urlencode({ 'query' : query })
 
@@ -188,15 +188,22 @@ def get_sequences(species, database_name, schema_name, table_name, nucleotide) :
         exit(1)
 
 
-    stderr.write("\r[downloading %s] got %d sequences " % ("cDNA" if nucleotide else "protein", len(sequences)))
+    stderr.write("\r[downloading %s] got %d sequences " % ("CDS" if nucleotide else "protein", len(sequences)))
 
     for s in SeqIO.parse(f, 'fasta') :
-        sequences[s.id] = str(s.seq)
-        stderr.write("\r[downloading %s] got %d sequences " % ("cDNA" if nucleotide else "protein", len(sequences)))
+        id = s.id
+        seq = str(s.seq)
+        
+        # keep the longest isoform
+        if (id in sequences) and (len(seq) < len(sequences[id])) :
+            continue
+
+        sequences[id] = seq
+        stderr.write("\r[downloading %s] got %d sequences " % ("CDS" if nucleotide else "protein", len(sequences)))
 
     f.close()
 
-    stderr.write("\r[downloading %s] got %d sequences\n" % ("cDNA" if nucleotide else "protein", len(sequences)))
+    stderr.write("\r[downloading %s] got %d sequences\n" % ("CDS" if nucleotide else "protein", len(sequences)))
 
     return sequences
 

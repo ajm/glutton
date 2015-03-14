@@ -57,7 +57,7 @@ def build_command(args) :
               args.species, 
               args.release, 
               args.database_name,
-              not args.protein, 
+              True, #not args.protein, 
               args.download_only)
 
     except GluttonDBBuildError, nmgfe :

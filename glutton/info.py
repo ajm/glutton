@@ -171,8 +171,9 @@ class GluttonInformation(object) :
         p['contig_files'] = {}
 
         for filename,label,species in contig_files :
-            abs_filename = abspath(filename)
-            p['contig_files'][abs_filename] = [label, species, md5(abs_filename)]
+            #abs_filename = abspath(filename)
+            #p['contig_files'][abs_filename] = [label, species, md5(abs_filename)]
+            p['contig_files'][filename] = [label, species, md5(filename)]
 
         return p
 

@@ -1,3 +1,5 @@
+import sys
+
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.Alphabet import generic_dna
@@ -138,9 +140,31 @@ def glutton_to_json(families) :
 
 def json_to_glutton(families) :
     tmp = {}
+    bad_family_count = 0
+    bad_gene_count = 0
 
     for famid in families :
-        tmp[famid] = GeneFamily([ Gene(*families[famid][geneid], id=geneid) for geneid in families[famid] ], id=famid)
+        #tmp[famid] = GeneFamily([ Gene(*families[famid][geneid], id=geneid) for geneid in families[famid] ], id=famid)
+        
+        fam = []
+        bad = False
+        for geneid in families[famid] :
+            genename,geneseq = families[famid][geneid]
+
+            # if i find this, keep on adding then i can print out the whole family later
+            if geneseq == 'Sequenceunavailable' :
+                bad = True
+
+            fam.append( Gene(genename, geneseq, id=geneid) )
+        
+        if not bad :
+            tmp[famid] = GeneFamily(fam, id=famid)
+        else :
+            bad_family_count += 1
+            bad_gene_count += len(fam)
+
+    if bad_family_count > 0 :
+        print >> sys.stderr, "ERROR: %d bad gene families (containing %d genes)" % (bad_family_count, bad_gene_count)
 
     return tmp
 

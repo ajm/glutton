@@ -89,7 +89,7 @@ def download_database_pycogent(species, release, database_name='ensembl', nucleo
     genes = set()
     families = []
 
-    stderr.write("\r[downloading %s] got %d sequences " % ("cDNA" if nucleotide else "protein", len(genes)))
+    stderr.write("\r[downloading %s] got %d sequences " % ("CDS" if nucleotide else "protein", len(genes)))
 
     for gene in genome.getGenesMatching(BioType='protein_coding') :
         stableid = gene.StableId
@@ -105,7 +105,7 @@ def download_database_pycogent(species, release, database_name='ensembl', nucleo
         current = []
         
         if paralogs is None :
-            stderr.write("\r[downloading %s] got %d sequences " % ("cDNA" if nucleotide else "protein", len(genes)))
+            stderr.write("\r[downloading %s] got %d sequences " % ("CDS" if nucleotide else "protein", len(genes)))
             current.append((stableid, str(gene.CanonicalTranscript.Cds) if nucleotide else str(gene.CanonicalTranscript.ProteinSeq)))
 
         else :
@@ -113,7 +113,7 @@ def download_database_pycogent(species, release, database_name='ensembl', nucleo
                 paralogid = paralog.StableId
                 genes.add(paralogid)
 
-                stderr.write("\r[downloading %s] got %d sequences " % ("cDNA" if nucleotide else "protein", len(genes)))
+                stderr.write("\r[downloading %s] got %d sequences " % ("CDS" if nucleotide else "protein", len(genes)))
 
                 try :
                     current.append((paralogid, str(paralog.CanonicalTranscript.Cds) if nucleotide else str(paralog.CanonicalTranscript.ProteinSeq)))
@@ -125,7 +125,7 @@ def download_database_pycogent(species, release, database_name='ensembl', nucleo
         #print ','.join([ i for i,j in current ])
         families.append(current)
 
-    stderr.write("\r[downloading %s] got %d sequences\n" % ("cDNA" if nucleotide else "protein", len(genes)))
+    stderr.write("\r[downloading %s] got %d sequences\n" % ("CDS" if nucleotide else "protein", len(genes)))
 
     return families
 

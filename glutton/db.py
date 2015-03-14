@@ -352,7 +352,8 @@ class GluttonDB(object) :
             z.write(job.tree,      arcname = self._famid_to_tree(job.input.id))
             z.close()
         else :
-            self.log.error("Could not align gene family (%s)" % job.input.id)
+            if self.q.running :
+                self.log.error("Could not align gene family (%s)" % job.input.id)
 
         # release lock
         self.lock.release()

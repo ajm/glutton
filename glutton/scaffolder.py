@@ -422,7 +422,7 @@ class Scaffolder(object) :
     # take from the contig most similar to the reference overall
     def union_for_msa(self, reference, alignment) :
         if len(alignment) == 1 :
-            return alignment[0]
+            return Alignment(alignment[0].species, "", -1, -1, alignment[0].seq, "", self.db.species, contigs=[alignment[0].scaffold_id]) 
 
         def indices_by_similarity(align) :
             similarity = []

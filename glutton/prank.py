@@ -27,19 +27,20 @@ class Prank(ExternalTool) :
         return self.alignment_file
 
     def output_filenames(self, outfile) :
-        return [outfile + x for x in [".best.dnd", ".best.fas"]]
+        return [outfile + x for x in [".best.dnd", ".best.nuc.fas", ".best.pep.fas"]]
 
     def run(self, d, o) :
         parameters = [
                       "-d=%s" % d, 
                       "-o=%s" % o, 
-                      "-showtree"
+                      "-showtree",
+                      "-translate"
                      ]
 
         returncode, output = self._execute(parameters, self.output_filenames(o))
 
         self.tree_file = o + ".best.dnd"
-        self.alignment_file = o + ".best.fas"
+        self.alignment_file = o + ".best.nuc.fas"
 
         return returncode
 
