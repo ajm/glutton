@@ -31,7 +31,7 @@ def pretty_print_table(headings, data) :
     print ""
 
 if __name__ == '__main__' :
-    from glutton.ensembl import EnsemblDownloader
+    from glutton.ensembl_downloader import EnsemblDownloader
     e = EnsemblDownloader()
     pretty_print_table(['species', 'release'], e.get_all_species('metazoa'))
 

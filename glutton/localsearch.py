@@ -126,17 +126,3 @@ class All_vs_all_search(object) :
 
         self.lock.release()
 
-
-if __name__ == '__main__' :
-
-    from glutton.utils import get_log, glutton_log_defaults, set_threads
-    from glutton.genefamily import read_alignment_as_genefamily
-
-    glutton_log_defaults(get_log())
-
-    ava = All_vs_all_search()
-    tmp = ava.process('tc_test.fasta', read_alignment_as_genefamily('queries_test.fasta', 'test'), 0.8, 100)
-    
-    for m in tmp :
-        print m, tmp[m]
-

@@ -381,10 +381,3 @@ class GluttonInformation(object) :
 
         return self.query_contig_map[query_id]
 
-if __name__ == '__main__' :
-    
-    from glutton.db import GluttonDB
-
-    db = GluttonDB('tc23.glt')
-    gi = GluttonInformation(db, 'queries_test.fasta', './alignment_test')
-

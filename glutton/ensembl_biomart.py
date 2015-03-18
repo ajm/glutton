@@ -270,14 +270,3 @@ def get_homology_info(species, database_name, schema_name, table_name, nucleotid
     
     return homologies
 
-
-if __name__ == '__main__' :
-    from glutton.utils import setup_logging
-
-    setup_logging()
-
-    #print get_all_species(get_marts())
-
-    download_database_biomart('homo_sapiens')
-    #download_database_biomart('tribolium_castaneum')
-

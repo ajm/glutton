@@ -417,16 +417,16 @@ def test_download_database(species) :
         download_database(species, release)
 
 
-if __name__ == '__main__' :
-    test_species_listing()
-    exit(0)
+#if __name__ == '__main__' :
+#    test_species_listing()
+#    exit(0)
 
-    e = EnsemblDownloader()
+#    e = EnsemblDownloader()
 
     #for i in e.get_all_species(db='protists') :
     #    print i
 
-    families = e.download('homo_sapiens', 77, nucleotide=False)
+#    families = e.download('homo_sapiens', 77, nucleotide=False)
 
 
 #version_table, db_table = get_compara_versions()

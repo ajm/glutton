@@ -539,32 +539,3 @@ class GluttonDB(object) :
         for y in x :
             print y.format('fasta').rstrip()
 
-if __name__ == '__main__' :
-
-    import signal
-    import sys
-    import os
-
-    from glutton.utils import glutton_log_defaults
-
-
-    glutton_log_defaults(get_log())
-
-    #gdb = GluttonDB()
-    gdb = GluttonDB('tc23.glt')
-
-    def _cleanup(signal, frame) :
-        print >> sys.stderr, "Killed by user, cleaning up...",
-        gdb.stop()
-        print >> sys.stderr, "done"
-        os._exit(0)
-
-    signal.signal(signal.SIGINT, _cleanup)
-
-    #gdb.build('tc23.glt', 'tribolium_castaneum')
-    
-    
-    #print gdb.extract_all()
-    gdb.sanity_check()
-    #gdb.debug()
-
