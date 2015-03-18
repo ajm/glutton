@@ -180,7 +180,8 @@ class Aligner(object) :
         sys.stderr.flush()
 
         if self.complete_jobs == self.total_jobs :
-            print >> sys.stderr, "\ndone!"
+            sys.stderr.write("\n")
+            sys.stderr.flush()
 
         self.lock.release()
 

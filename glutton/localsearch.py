@@ -92,7 +92,8 @@ class All_vs_all_search(object) :
         sys.stderr.write("\rProgress: %d / %d blastx alignments " % (self.complete_jobs, self.total_jobs))
 
         if self.complete_jobs == self.total_jobs :
-            print >> sys.stderr, "\ndone!"
+            sys.stderr.write("\n")
+            sys.stderr.flush()
 
     def job_callback(self, job) :
         self.log.debug("%d blast results returned" % len(job.results))
