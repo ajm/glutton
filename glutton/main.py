@@ -59,6 +59,16 @@ def handle_args(args) :
         par.add_argument('--database-password', type=str, default="", 
                          help='specify database password')
 
+    def add_input_files_options(par) :
+        par.add_argument('-c', '--contigs', type=str, action='append',
+                         help='fasta file containing contigs')
+        par.add_argument('-l', '--label',   type=str, action='append',
+                         help='freeform label for file containing contigs (specified with --contigs)')
+        par.add_argument('-s', '--species', type=str, action='append',
+                         help='species designation for file containing contigs (specified with --contigs)')
+        par.add_argument('-b', '--bam', type=str, action='append',
+                         help='BAM file of reads mapped to contigs (specified with --contigs)')
+
     def check_zero_one(v):
         x = float(v)
         if x < 0.0 or x > 1.0 :
@@ -145,16 +155,10 @@ def handle_args(args) :
     parser_align.add_argument('-x', '--length', type=check_non_negative, default=200,
                               help='minimum contig length for gene assignment step')
 
-    parser_align.add_argument('-b', '--batchsize', type=check_greater_than_zero, default=100,
+    parser_align.add_argument('-B', '--batchsize', type=check_greater_than_zero, default=100,
                               help='number of queries per batch for local alignment')
 
-    parser_align.add_argument('-c', '--contigs', type=str, action='append',
-                              help='fasta file containing contigs')
-    parser_align.add_argument('-l', '--label',   type=str, action='append',
-                              help='freeform label for file containing contigs (specified with --contigs)')
-    parser_align.add_argument('-s', '--species', type=str, action='append',
-                              help='species designation for file containing contigs (specified with --contigs)')
-
+    add_input_files_options(parser_align)
     add_generic_options(parser_align)
 
 
@@ -168,13 +172,7 @@ def handle_args(args) :
     parser_scaf.add_argument('-o', '--output', type=str, default=default_scaffold_dir,
                              help='directory to output scaffolded contigs and MSAs')
 
-    parser_scaf.add_argument('-c', '--contigs', type=str, action='append',
-                             help='fasta file containing contigs')
-    parser_scaf.add_argument('-l', '--label',   type=str, action='append',
-                             help='freeform label for file containing contigs (specified with --contigs)')
-    parser_scaf.add_argument('-s', '--species', type=str, action='append',
-                             help='species designation for file containing contigs (specified with --contigs)')
-
+    add_input_files_options(parser_scaf)
     add_generic_options(parser_scaf)
 
 
@@ -232,12 +230,21 @@ def generic_options(args) :
 
             l = len(args.contigs)
             if (l != len(args.label)) or (l != len(args.species)) :
-                print >> stderr, "ERROR: you must specify one --label and one --species argument per --contigs file! (%d files, %d labels, %d species)" % (l, len(args.label), len(args.species))
+                print >> stderr, "ERROR: you must specify one --label and --species argument per --contigs file! (%d contig files, %d labels, %d species)" % \
+                        (l, len(args.label), len(args.species))
                 exit(1)
 
             if (l != len(set(args.label))) :
                 print >> stderr, "ERROR: file labels must be unique!"
                 exit(1)
+
+            if (len(args.bam) != 0) and (len(args.bam) != l) :
+                print >> stderr, "ERROR: if you must either specify bam files for all samples or no samples! (%d samples, %d bam files)" % \
+                        (l, len(args.bam))
+                exit(1)
+
+            if len(args.bam) == 0 :
+                args.bam = [None] * l
 
     setup_logging()
 

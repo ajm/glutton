@@ -87,8 +87,8 @@ class GluttonInformation(object) :
         tmp = []
 
         for filename in self.params['contig_files'] :
-            label,species,checksum = self.params['contig_files'][filename]
-            tmp.append((filename, label, species))
+            label,species,checksum,bam = self.params['contig_files'][filename]
+            tmp.append((filename, label, species, bam))
 
         return tmp
 
@@ -170,10 +170,8 @@ class GluttonInformation(object) :
 
         p['contig_files'] = {}
 
-        for filename,label,species in contig_files :
-            #abs_filename = abspath(filename)
-            #p['contig_files'][abs_filename] = [label, species, md5(abs_filename)]
-            p['contig_files'][filename] = [label, species, md5(filename)]
+        for filename,label,species,bamfilename in contig_files :
+            p['contig_files'][filename] = [label, species, md5(filename), bamfilename]
 
         return p
 
@@ -202,12 +200,12 @@ class GluttonInformation(object) :
         self.log.fatal("%s/%d" % (p['db_species'], p['db_release']))
 
         for filename in p['contig_files'] :
-            label, species, checksum = p['contig_files'][filename]
-            self.log.fatal("\t%s label=%s species=%s md5=%s" % (filename, label, species, checksum))
+            label,species,checksum,bamfile = p['contig_files'][filename]
+            self.log.fatal("\t%s label=%s species=%s md5=%s bam=%s" % (filename, label, species, checksum, bamfile))
 
     def _not_same_db(self, par) :
-        def get_checksums(p) :
-            return sorted([ p['db_checksum'] ] + [ p['contig_files'][f] for f in p['contig_files'] ])
+        def get_checksums(p) : 
+            return sorted([ p['db_checksum'] ] + [ p['contig_files'][f][:3] for f in p['contig_files'] ])
 
         return get_checksums(self.params) != get_checksums(par)
 
@@ -325,7 +323,7 @@ class GluttonInformation(object) :
 
     def _checksum_to_label(self, checksum) :
         for fname in self.params['contig_files'] :
-            label,species,csum = self.params['contig_files'][fname]
+            label,species,csum,bam = self.params['contig_files'][fname]
             if checksum == csum :
                 return label
 
@@ -333,7 +331,7 @@ class GluttonInformation(object) :
 
     def label_to_species(self, label) :
         for fname in self.params['contig_files'] :
-            lab,species,checksum = self.params['contig_files'][fname]
+            lab,species,checksum,bam = self.params['contig_files'][fname]
             if label == lab :
                 return species
 

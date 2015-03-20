@@ -72,7 +72,7 @@ def check_command(args) :
     return 0 if GluttonDB(args.gltfile).sanity_check(human_readable_summary=True, suppress_errmsg=True, show_all=args.show) else 1        
 
 def align_command(args) :
-    contigs = zip(args.contigs, args.label, args.species) if args.contigs else []
+    contigs = zip(args.contigs, args.label, args.species, args.bam) if args.contigs else []
 
     align = Aligner(args.alignments,
                     args.reference, 

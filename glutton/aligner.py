@@ -44,7 +44,7 @@ class Aligner(object) :
     def _read_contigs(self) :
         contigs = {}
 
-        for fname,label,species in self.info.get_contig_files() :
+        for fname,label,species,bamfile in self.info.get_contig_files() :
             accepted = 0
             rejected = 0
 

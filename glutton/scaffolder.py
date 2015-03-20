@@ -163,11 +163,21 @@ class Alignment(object) :
             self.seq.replace('-', '')\
           )
 
+    def erase_after_stop_codon(self) :
+        for i in range(0, len(self.seq), 3) :
+            codon = self.seq[i : i+3]
+            
+            if codon in ('TAG', 'TAA', 'TGA') :
+                end = i + 3
+                return self.seq[:end] + ("-" * (len(self.seq) - end))
+            
+        return self.seq
+
     def format_alignment(self) :
         #if not self.contigs :
         #    return ">%s gene=%s\n%s" % (self.id, self.gene_name, self.seq)
 
-        return ">%s scaffolds=%s\n%s" % (self.id, ','.join(self.contigs), self.seq)
+        return ">%s scaffolds=%s\n%s" % (self.id, ','.join(self.contigs), self.erase_after_stop_codon())
 
     def __str__(self) :
         return str((self.id, self.start, self.end, self.seq))
@@ -566,7 +576,7 @@ class Scaffolder(object) :
 
     def output_unscaffolded_contigs(self, output_files, aligned_contigs) :
 
-        for fname,label,species in self.contig_files :
+        for fname,label,species,bamfiles in self.contig_files :
             #label = self.info.filename_to_label(fname)
             fout = output_files[label]
 
