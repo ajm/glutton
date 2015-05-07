@@ -8,6 +8,8 @@ import operator
 
 from Bio import SeqIO
 
+import pysam
+
 from glutton.utils import get_log, check_dir
 from glutton.info import GluttonInformation
 
@@ -54,6 +56,9 @@ class Alignment(object) :
     def remove_chars(self, indices) :
         for i in sorted(indices, reverse=True) :
             self.seq = self.seq[:i] + self.seq[i+1:]
+
+    def in_range(self, i) :
+        return self.start <= i < self.end
 
     def __getitem__(self, i) :
         return self.seq[i] if self.start <= i < self.end else None
@@ -163,24 +168,31 @@ class Alignment(object) :
             self.seq.replace('-', '')\
           )
 
-    def erase_after_stop_codon(self) :
+    def truncate_at_stop_codon(self) :
+        self.seq = self.seq_stop_codon()
+
+    def seq_stop_codon(self) :
         for i in range(0, len(self.seq), 3) :
             codon = self.seq[i : i+3]
             
             if codon in ('TAG', 'TAA', 'TGA') :
-                end = i + 3
-                return self.seq[:end] + ("-" * (len(self.seq) - end))
-            
-        return self.seq
+                s = self.seq[:i] + ("-" * (len(self.seq) - i))
+                return s.replace('NNN', '---')
 
-    def format_alignment(self) :
-        #if not self.contigs :
-        #    return ">%s gene=%s\n%s" % (self.id, self.gene_name, self.seq)
+        return self.seq.replace('NNN', '---')
 
-        return ">%s scaffolds=%s\n%s" % (self.id, ','.join(self.contigs), self.erase_after_stop_codon())
+    def format_alignment(self, name) :
+        return ">%s species=%s scaffolds=%s\n%s" % (name, self.id, ','.join(self.contigs), self.seq)
+
+    def __len__(self) :
+        return self.end - self.start
 
     def __str__(self) :
         return str((self.id, self.start, self.end, self.seq))
+
+class Alignment2(Alignment) :
+    def __init__(self, id, seq, contigs) :
+        super(Alignment2, self).__init__(id, "", -1, -1, seq, "", "", contigs=contigs)
 
 class Scaffolder(object) :
     def __init__(self, alignments_dir, db, contig_files, output_dir) :
@@ -194,7 +206,6 @@ class Scaffolder(object) :
         self.info = GluttonInformation(alignments_dir, db, contig_files)
 
         self.db = self.info.get_db()
-        self.contig_files = self.info.get_contig_files()
 
         # perhaps slightly overambitious to exit, just stick to a warning      
         pending,failures = self.info.num_alignments_not_done()
@@ -427,67 +438,42 @@ class Scaffolder(object) :
 
         f.close()
 
-    # for now take a majority vote or in the case of a tie
-    # for the base most like the reference
-    # take from the contig most similar to the reference overall
-    def union_for_msa(self, reference, alignment) :
+    def consensus_for_msa(self, reference, alignment, bamfiles) :
         if len(alignment) == 1 :
-            return Alignment(alignment[0].species, "", -1, -1, alignment[0].seq, "", self.db.species, contigs=[alignment[0].scaffold_id]) 
+            return Alignment2(alignment[0].species, alignment[0].seq, [alignment[0].scaffold_id])
 
-        def indices_by_similarity(align) :
-            similarity = []
+        # this is buggy if within a species there are FAKE and real bam files
+        coverage = []
+        for a in alignment :
+            if a.label in bamfiles :
+                try :
+                    coverage.append(bamfiles[a.label].count(str(a.id)) / float(len(a)))
+                except ValueError :
+                    coverage.append(1 / float(len(a)))
+            else :
+                coverage.append(len(a))
 
-            for i,a in enumerate(alignment) :
-                similarity.append( sum([ 1 for x,y in zip(reference, a.seq) if (x == y) and ((x,y) != ('-','-')) ]) )
-
-            return [ i for s,i in sorted( [(s,i) for i,s in enumerate(similarity)] ) ]
-
-        similarity = indices_by_similarity(alignment)
-
-        # loop through columns building up the sequence
+        # loop through columns building up consensus sequence
         s = ""
-        for index,i in enumerate(zip(*[ a.seq for a in alignment ])) :
-            counts = Counter(i)
-            del counts['-']
-            del counts['N']
+        for column_index,column in enumerate(zip(*[ a.seq for a in alignment ])) :
+            counts = Counter()
+
+            for alignment_index,chcov in enumerate(zip(column, coverage)) :
+                ch,cov = chcov
+
+                if alignment[alignment_index].in_range(column_index) :
+                    counts[ch] += cov
 
             # only gaps
             if not counts :
                 s += '-'
                 continue
 
-            # only one option
-            if len(counts) == 1 :
-                k,v = counts.popitem()
-                s += k
-                continue
+            # add column from contig with highest coverage
+            ch,cov = counts.most_common(1)[0]
+            s += ch
 
-            # more than one option
-            counts_desc = counts.most_common()
-
-            # clear majority, use most abundant 
-            if counts_desc[0][1] != counts_desc[1][1] :
-                s += counts_desc[0][0]
-                continue
-
-            # no majority, so go with the sequence closest to the reference
-            # out of the most common set
-            most_common = [ c for c,n in counts_desc if n == counts_desc[0][1] ]
-            added = False            
-
-            for aindex in similarity :
-                c = alignment[aindex][index] 
-                if c in most_common :
-                    s += c
-                    added = True
-                    break
-
-            if added :
-                continue
-
-            assert False, "impossible situation reached in function union_for_msa"
-
-        return Alignment(alignment[0].species, "", -1, -1, s, "", self.db.species, contigs=[a.scaffold_id for a in alignment])
+        return Alignment2(alignment[0].species, s, [a.scaffold_id for a in alignment])
 
     def remove_common_gaps(self, alignment) :
         indices = []
@@ -501,7 +487,11 @@ class Scaffolder(object) :
 
         return alignment
 
-    def process_alignments(self, output_files) :
+    def truncate_at_stop_codons(self, alignment) :
+        for a in alignment :
+            a.truncate_at_stop_codon()
+
+    def process_alignments(self, output_files, bam_files) :
         global DEBUG
 
         counter = -1
@@ -526,49 +516,63 @@ class Scaffolder(object) :
                     merged_contigs[gene_name][a.species].append(a)
 
 
-            # merge sequences from the same species (DONE)
-            # find stop codon and truncate sequences (TODO)
-            # delete columns with only gaps (DONE)
-            # then write out to a file in self.output_dir (DONE)
-            # in MSA have >species_name contents=gluttonX,gluttonY,gluttonZ (DONE)
+            # merge sequences from the same species
+            # find stop codon and truncate sequences
+            # delete columns with only gaps
+            # then write out to a file in self.output_dir
+            # in MSA have >species_name contents=gluttonX,gluttonY,gluttonZ
             new_alignment = []
 
             for gene_name,gene_seq in genes :
-                new_alignment.append(Alignment(self.db.species, "", -1, -1, gene_seq, "", self.db.species, contigs=[gene_name]))
+                new_alignment.append(Alignment2(self.db.species, gene_seq, [gene_name]))
                 
                 for species in merged_contigs[gene_name] :
-                    new_alignment.append(self.union_for_msa(gene_seq, merged_contigs[gene_name][species]))
+                    new_alignment.append(self.consensus_for_msa(gene_seq, merged_contigs[gene_name][species], bam_files))
                 
+            self.truncate_at_stop_codons(new_alignment)
             self.remove_common_gaps(new_alignment)
 
             counter += 1
             with open(join(self.output_dir, "msa%d.fasta" % counter), 'w') as f :
-                for a in new_alignment :
-                    print >> f, a.format_alignment()
+                for index,a in enumerate(new_alignment) :
+                    print >> f, a.format_alignment("seq%d" % (index + 1))
 
+
+        self.log.info("created %d multiple sequence alignments" % (counter + 1))
 
         return aligned_contigs
 
     def scaffold(self) :
         self.log.info("starting scaffolding")
 
-        # open contig files
+        # open scaffold + BAM files
         output_files = {}
-        for label in self.info.get_labels() :
+        bam_files = {}
+
+        for label in self.info.get_sample_ids() :
             fname = join(self.output_dir, label + '.fasta')
             self.log.info("creating %s ..." % fname)
             output_files[label] = open(fname, 'w')
 
+            bamfilename = self.info.label_to_bam(label)
+
+            if bamfilename :
+                if bamfilename == 'FAKE' :
+                    self.log.warn("bam file missing for sample %s" % label)
+                    continue
+
+                bam_files[label] = pysam.AlignmentFile(bamfilename)
+
         # process alignment files
-        aligned_contigs = self.process_alignments(output_files)
+        aligned_contigs = self.process_alignments(output_files, bam_files)
         
         # append contigs remaining contigs
         self.output_unscaffolded_contigs(output_files, aligned_contigs)
 
-        # close contig files
-        for f in output_files.values() :
+        # close scaffold + BAM files
+        for f in output_files.values() + bam_files.values() :
             f.close()
-        
+
         return 0
 
     def fasta_output(self, contig, seq, desc) :
@@ -576,11 +580,10 @@ class Scaffolder(object) :
 
     def output_unscaffolded_contigs(self, output_files, aligned_contigs) :
 
-        for fname,label,species,bamfiles in self.contig_files :
-            #label = self.info.filename_to_label(fname)
+        for label in self.info.get_sample_ids() :
             fout = output_files[label]
 
-            for r in SeqIO.parse(fname, 'fasta') :
+            for r in SeqIO.parse(self.info.label_to_contigs(label), 'fasta') :
 
                 if r.id in aligned_contigs[label] :
                     continue

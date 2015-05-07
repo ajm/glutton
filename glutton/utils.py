@@ -125,26 +125,22 @@ def fasta_stats(fname) :
 
     return _stats(data)
 
-def _write_six_orfs(fout, seq) :
-    for i in range(3) :
-        print >> fout, ">%s\n%s" % (seq.id + '_orf' + str(i+1), seq[i:])
-
-    seq.reverse_complement()
-
-    for i in range(3) :
-        print >> fout, ">%s\n%s" % (seq.id + '_orf' + str(i+4), seq[i:])
-
-    seq.reverse_complement()
-
 def tmpfasta_orfs(seq) :
     fname = tmpfile()
 
+    tmp = []
+    if isinstance(seq, list) :
+        for s in seq :
+            tmp += s.open_reading_frames()
+    else :
+        tmp += seq.open_reading_frames()
+
+    if not tmp :
+        raise Exception("nothing to write!")
+
     with open(fname, 'w') as f :
-        if isinstance(seq, list) :
-            for s in seq :
-                _write_six_orfs(f, s)
-        else :
-            _write_six_orfs(f, seq)
+        for s in tmp :
+            print >> f, s.format('fasta').rstrip()
 
     return fname
 

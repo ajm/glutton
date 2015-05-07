@@ -50,6 +50,54 @@ class Gene(object) :
 
         return ">%s\n%s\n" % (self.id, seq_to_print)
 
+    def open_reading_frames(self) :
+        tmp = []
+        newid = self.id + "_orf%d"
+
+        lens = []
+
+        for i in range(3) :
+            tmp_seq = Gene(self.name, self.sequence[i:], newid % (i + 1))
+            tmp_len = tmp_seq.len_to_stop_codon()
+
+            if tmp_len > 100 :
+                tmp.append(tmp_seq)
+
+            lens.append(tmp_len)
+
+        self.reverse_complement()
+
+        for i in range(3) :
+            tmp_seq = Gene(self.name, self.sequence[i:], newid * (i + 4))
+            tmp_len = tmp_seq.len_to_stop_codon()
+
+            if tmp_len > 100 :
+                tmp.append(tmp_seq)
+
+            lens.append(tmp_len)
+
+        self.reverse_complement()
+
+        #print " ".join([ str(i) for i in lens ])
+
+        return tmp
+
+    def len_to_stop_codon(self) :
+        stop_codons = ('TAA','TAG','TGA')
+        codons = [ self.sequence[i:i+3] for i in range(0, len(self.sequence), 3) ]
+        min_len = len(codons)
+
+        for sc in stop_codons :
+            if sc not in codons :
+                continue
+
+            seq_len = codons.index(sc)
+
+            if seq_len < min_len :
+                min_len = seq_len
+
+        return min_len * 3
+
     def reverse_complement(self) :
         self.sequence = self.sequence[::-1]
 

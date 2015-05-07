@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-from distutils.core import setup
+from setuptools import setup
 
 setup(name='Glutton',
       version='0.1',
@@ -11,7 +11,6 @@ setup(name='Glutton',
       long_description='Transcriptome Scaffolding using Evolutionary Alignment',
       platforms=['*nix'],
       packages=['glutton'],
-      requires=['biopython(>=1.6)', 'sqlalchemy'],
+      install_requires=['biopython>=1.6', 'sqlalchemy', 'pysam'],
       scripts=['scripts/glutton'],
      )
-

@@ -97,7 +97,7 @@ def align_command(args) :
     return 0
 
 def scaffold_command(args) :
-    contigs = zip(args.contigs, args.label, args.species) if args.contigs else []
+    contigs = zip(args.contigs, args.label, args.species, args.bam) if args.contigs else []
 
     scaf = Scaffolder(args.alignments, 
                       args.reference,

@@ -73,6 +73,8 @@ class WorkQueue(object):
         # calling join causes the calling thread to try and 
         # acquire the lock in self.q, so poll instead so the
         # user can still do a ctrl-C
+        self.log.debug("queue joined")
+        self.no_more_jobs = True
 
         while True :
             if self.q.empty() :
@@ -81,18 +83,19 @@ class WorkQueue(object):
             time.sleep(5)
 
         self.q.join()
+        self.log.debug("queue done")
 
     def size(self) :
         return self.q.qsize()
 
     # block until the queue is drained
-    def done(self) :
-        self.no_more_jobs = True
-
-        for t in self.workers :
-            t.join()
-
-        self.log.debug("queue drained")
+#    def done(self) :
+#        self.no_more_jobs = True
+#
+#        for t in self.workers :
+#            t.join()
+#
+#        self.log.debug("queue drained")
 
     def enqueue(self, j):
         self.log.debug("enqueuing %s" % str(j))
@@ -114,7 +117,7 @@ class WorkQueue(object):
             
             except Queue.Empty, qe:
                 if self.no_more_jobs :
-                    self.log.debug("no more jobs, exiting...")
+                    self.log.debug("no more jobs...")
                     break
 
                 continue
@@ -122,14 +125,9 @@ class WorkQueue(object):
             self.log.debug("starting %s" % str(work))
             work.run()
 
-            # pagan et al can core dump resulting in a negative exit code, 
-            # so just rely on the running flag for exiting the thread
-            #if work.terminated() 
-            if not self.running :
-                self.log.warn("thread exiting...")
-                break
-
             self.log.debug("completed %s %s" % (str(work), work.state_str()))
             self.q.task_done()
             self.jobs_completed = self.jobs_counter.next()
+
+        self.log.debug("thread exiting...")
 

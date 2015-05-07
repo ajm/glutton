@@ -211,6 +211,16 @@ def generic_options(args) :
 
         args.output = args.gltfile
 
+    if hasattr(args, 'gltfile') and hasattr(args, 'species') :
+        if not args.gltfile and not args.species :
+            print >> stderr, "ERROR: you must specify either the species or an existing GLT file..."
+            exit(1)
+
+    if hasattr(args, 'reference') and args.reference :
+        if not os.path.isfile(args.reference) :
+            print >> stderr, "ERROR: %s does not exist..." % args.reference
+            exit(1)
+
     # verbosity
     if hasattr(args, 'verbose') :
         set_verbosity(args.verbose)
@@ -219,9 +229,11 @@ def generic_options(args) :
     if hasattr(args, 'download_method') :
         set_ensembl_download_method(args.download_method)
 
-    # contigs, labels, species
-    # contigs and labels must be unique
+    # contigs, labels, species, bam files
+    # contigs, labels amd bam files must be unique
+    #   apart from 'FAKE' bam file
     # length of contigs, label, species must be the same
+    # length of bam files is either zero or same as contigs
     if hasattr(args, 'contigs') :
         if args.contigs :
             if not args.label or not args.species :
@@ -238,13 +250,22 @@ def generic_options(args) :
                 print >> stderr, "ERROR: file labels must be unique!"
                 exit(1)
 
-            if (len(args.bam) != 0) and (len(args.bam) != l) :
+            if (args.bam != None) and (len(args.bam) != l) :
                 print >> stderr, "ERROR: if you must either specify bam files for all samples or no samples! (%d samples, %d bam files)" % \
                         (l, len(args.bam))
                 exit(1)
 
-            if len(args.bam) == 0 :
-                args.bam = [None] * l
+            if args.bam == None :
+                args.bam = [ None ] * l
+
+            bad = False
+            for fname in [ f for f in args.contigs + args.bam if f ] :
+                if fname != 'FAKE' and not os.path.isfile(fname) :
+                    print >> stderr, "ERROR: %s not found" % fname
+                    bad = True
+
+            if bad :
+                exit(1)
 
     setup_logging()
 

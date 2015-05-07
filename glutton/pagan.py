@@ -4,6 +4,9 @@ class Pagan(ExternalTool) :
     def __init__(self) :
         super(Pagan, self).__init__()
 
+        self.protein_alignment_fname = None
+        self.nucleotide_alignment_fname = None
+
     @property
     def version(self) :
         returncode, output = self._execute(["--version"], [])
@@ -24,7 +27,7 @@ class Pagan(ExternalTool) :
         return self.protein_alignment_fname
 
     def output_filenames(self, outfile) :
-        return [ outfile + i for i in ('.codon.fas', '.fas', '') ]
+        return [ outfile + i for i in ('.codon.fas', '.fas', '') ] if outfile else []
 
     def run(self, queries_fname, out_fname, alignment_fname, tree_fname=None) :
         parameters = [

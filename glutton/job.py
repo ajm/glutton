@@ -18,7 +18,7 @@ class JobError(Exception) :
     pass
 
 class Job(object) :
-    QUEUED,RUNNING,SUCCESS,FAIL,TERMINATED,INTERNAL_ERROR = range(6)
+    QUEUED,RUNNING,SUCCESS,FAIL,TERMINATED,INTERNAL_ERROR,NOTHING_TO_DO = range(7)
 
     states = {
         QUEUED          : 'QUEUED',
@@ -26,7 +26,8 @@ class Job(object) :
         SUCCESS         : 'SUCCESS',
         FAIL            : 'FAIL',
         TERMINATED      : 'TERMINATED',
-        INTERNAL_ERROR  : 'INTERNAL_ERROR'
+        INTERNAL_ERROR  : 'INTERNAL_ERROR',
+        NOTHING_TO_DO   : 'NOTHING_TO_DO'
     }
 
     def __init__(self, callback) :
@@ -70,11 +71,10 @@ class Job(object) :
 
         if ret == 0 :
             self.end(Job.SUCCESS)
-        elif ret == 130 : # SIGINT 
+        elif ret == -2 : # SIGINT = 130
             self.end(Job.TERMINATED)
         else :
             self.end(Job.FAIL)
-
 
         if not self.terminated() :
             self.callback(self)
@@ -200,6 +200,11 @@ class PaganJob(Job) :
 
         self.pagan = Pagan()
 
+        self.query_fname = None
+        self.out_fname = None
+        self.alignment_fname = None
+        self.tree_fname = None
+
     @property
     def input(self) :
         return self._queries
@@ -221,7 +226,11 @@ class PaganJob(Job) :
         return [self.query_fname, self.alignment_fname, self.tree_fname] + self.pagan.output_filenames(self.out_fname)
 
     def _run(self) :
-        self.query_fname        = tmpfasta_orfs(self._queries) #tmpfasta(self._queries)
+        try :
+            self.query_fname = tmpfasta_orfs(self._queries)
+        except Exception :
+            return -1
+
         self.out_fname          = tmpfile()
         self.alignment_fname    = tmpfasta(self._alignment)
         

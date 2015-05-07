@@ -3,7 +3,7 @@ import shutil
 import sys
 import threading
 
-from glutton.db import GluttonDB, GluttonDBFileError
+from glutton.db import GluttonDB, GluttonDBError, GluttonDBFileError
 from glutton.localsearch import All_vs_all_search
 from glutton.utils import tmpfile, num_threads, get_log, rm_f, check_dir, md5
 from glutton.queue import WorkQueue
@@ -44,9 +44,11 @@ class Aligner(object) :
     def _read_contigs(self) :
         contigs = {}
 
-        for fname,label,species,bamfile in self.info.get_contig_files() :
+        for label in self.info.get_sample_ids() :
             accepted = 0
             rejected = 0
+
+            fname = self.info.label_to_contigs(label)
 
             for r in SeqIO.parse(fname, 'fasta') :
                 if len(r) < self.min_length :
@@ -67,10 +69,10 @@ class Aligner(object) :
         self.search.stop()
         self.info.update_query_gene_mapping(self.search.get_intermediate_results())
         
-        rm_f(self.cleanup_files)
-
         if self.q :
             self.q.stop()
+
+        rm_f(self.cleanup_files)
 
         self.info.flush()
 
@@ -134,10 +136,6 @@ class Aligner(object) :
             if self.info.in_genefamily2filename(famid) :
                 continue
 
-#            if famid != 'genefamily1485' :
-#                continue
-
-
             # get the alignment and tree from the database
             try :
                 alignment = self.db.get_alignment(famid)
@@ -169,7 +167,8 @@ class Aligner(object) :
         self.info.flush()
 
     def sort_keys_by_complexity(self, d) :
-        return [ k for k,v in sorted(d.items(), reverse=True, key=lambda x : seqlen(x[1])) ]
+        #return [ k for k,v in sorted(d.items(), reverse=True, key=lambda x : seqlen(x[1])) ]
+        return [ k for l,k,v in sorted([ (seqlen(v), k, v) for k,v in d.items() ], reverse=True) ]
 
     def _progress(self) :
         self.lock.acquire()
