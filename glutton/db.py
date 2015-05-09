@@ -386,6 +386,13 @@ class GluttonDB(object) :
     def _famid_to_tree(self, famid) :
         return famid + '.tree'
 
+    def get_gene(self, geneid) :
+        for gene in self.data[self.seq2famid[geneid]] :
+            if gene.id == geneid :
+                return gene
+
+        raise GluttonDBError("%s not found in %d" % (geneid, famid))
+
     def get_alignment(self, famid) :
         # there are two situations
         # 1. there is only a single gene and therefore no alignment file or tree file
@@ -394,6 +401,10 @@ class GluttonDB(object) :
 
         if not self.data.has_key(famid) :
             raise GluttonDBError("genefamily with id '%s' not found" % famid)
+
+        def _bail_out(f, lock) :
+            f.close()
+            lock.release()
 
         # situation 1
         if len(self.data[famid]) == 1 :
@@ -410,18 +421,18 @@ class GluttonDB(object) :
 
         # check that both files exist
         if alignment_fname not in listing :
+            _bail_out(z, self.lock)
             raise GluttonDBFileError("'%s' not found" % alignment_fname)
 
         if tree_fname not in listing :
+            _bail_out(z, self.lock)
             raise GluttonDBFileError("'%s' not found" % tree_fname)
 
         # read contents
         alignment = read_alignment_as_genefamily(z.open(alignment_fname), famid)
         alignment.set_tree(z.read(tree_fname))
 
-        z.close()
-        self.lock.release()
-
+        _bail_out(z, self.lock)
 
         return alignment
 

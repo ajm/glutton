@@ -108,6 +108,8 @@ class Aligner(object) :
 
             rm_f(db_fname)
 
+        # save intermediate results
+        self.info.flush()
 
         # use the database to convert the mapping from tmp id -> gene
         # to gene family -> list of tmp ids
@@ -136,34 +138,74 @@ class Aligner(object) :
             if self.info.in_genefamily2filename(famid) :
                 continue
 
-            # get the alignment and tree from the database
             try :
+                # get the alignment and tree from the database
                 alignment = self.db.get_alignment(famid)
                 tree = alignment.get_tree()
 
+                # get contigs
+                job_contigs = [ contigs[i] for i in genefamily_contig_map[famid] ]
+
+                # queue the job
+                self.q.enqueue(
+                    PaganJob(
+                        self.job_callback,
+                        job_contigs,
+                        famid,
+                        alignment,
+                        tree)
+                    )
+
+                # avoid the split code later in the loop...
+                continue
+
             except GluttonDBError, gde :
+                # this means we have never heard of this gene family
                 self.log.warn(str(gde))
                 continue
 
             except GluttonDBFileError, gdfe :
+                # this means we have heard of the gene family, but the
+                # alignment files were missing...
                 self.log.warn(str(gdfe))
-                continue
 
-            job_contigs = [ contigs[i] for i in genefamily_contig_map[famid] ]
+            # okay, the gene family was not aligned for some reason
+            # instead we will split the gene family into constituent genes
+            # and handle each one separately...
 
-            # queue the job
-            self.q.enqueue(
+            self.log.warn("gene family was not aligned, breaking down into separate genes...")
+            self.total_jobs += (len(genefamily_contig_map[famid]) - 1)
+
+            for i in genefamily_contig_map[famid] :
+                try :
+                    geneid = self.info.query_to_gene(i)
+
+                except KeyError : # this should be impossible
+                    self.log.warn("no gene assignment for %s" % i)
+                    continue
+
+                try :
+                    alignment = [ self.db.get_gene(geneid) ]
+
+                except GluttonDBError, gde :
+                    self.log.warn(str(gde))
+                    continue
+
+                # queue the job
+                self.q.enqueue(
                     PaganJob(
-                        self.job_callback, 
-                        job_contigs, 
-                        famid,
-                        alignment, 
-                        tree)
+                        self.job_callback,
+                        [ contigs[i] ],
+                        geneid,
+                        alignment,
+                        None)
                     )
-            
+
+
         self.log.debug("waiting for job queue to drain...")
         self.q.join()
 
+        # save all the results again
         self.info.flush()
 
     def sort_keys_by_complexity(self, d) :

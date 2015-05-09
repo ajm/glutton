@@ -78,12 +78,16 @@ class WorkQueue(object):
 
         while True :
             if self.q.empty() :
+                self.log.debug("queue is now empty")
                 break
 
             time.sleep(5)
 
-        self.q.join()
-        self.log.debug("queue done")
+        self.q.join() # this makes ctrl-C impossible...
+        self.log.debug("queue drained")
+
+        for t in self.workers:
+            t.join()
 
     def size(self) :
         return self.q.qsize()
@@ -111,6 +115,8 @@ class WorkQueue(object):
                 pass
 
     def _consume_queue(self):
+        self.log.debug("threading starting...")
+
         while self.running :
             try :
                 work = self.q.get(timeout=self.q_timeout)

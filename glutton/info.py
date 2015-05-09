@@ -141,7 +141,11 @@ class GluttonInformation(object) :
         self.genefamily_filename_map    = self._load(self.pagan_filename)
 
         if self.params :
-            self.log.info("read %d samples from %d species" % (len(self.params['samples']), len(set([ self.params['samples'][s]['species'] for s in self.params['samples'] ]))))
+            self.log.info("read %d sample%s from %d species" % (\
+                    len(self.params['samples']),
+                    "s" if len(self.params['samples']) else "" ,
+                    len(set([ self.params['samples'][s]['species'] for s in self.params['samples'] ]))
+                  ))
 
         if self.contig_query_map :
             self.log.info("read %d contig to query id mappings" % sum([ len(self.contig_query_map[label]) for label in self.contig_query_map ]))
@@ -350,6 +354,10 @@ class GluttonInformation(object) :
         qid = self.contig_query_map[label][contig_id]
 
         return self.query_gene_map[qid] != 'FAIL'
+
+    @do_locking
+    def query_to_gene(self, query_id) :
+        return self.query_gene_map[query_id]
 
 #    @do_locking
 #    def contig_aligned(self, contig_id) :

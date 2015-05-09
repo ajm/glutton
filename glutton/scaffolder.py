@@ -243,6 +243,10 @@ class Scaffolder(object) :
 
         # identity here is the proportion of non-gaps
         def calc_identity(seq1, seq2, start, end) :
+
+            if start == end :
+                return 0.0
+
             count = 0
             for i,j in zip(seq1[start:end], seq2[start:end]) :
                 if (i,j) == ('-','-') :
@@ -445,13 +449,16 @@ class Scaffolder(object) :
         # this is buggy if within a species there are FAKE and real bam files
         coverage = []
         for a in alignment :
+            numerator = 1
+            denominator = len(a) if len(a) > 0 else 1
+
             if a.label in bamfiles :
                 try :
-                    coverage.append(bamfiles[a.label].count(str(a.id)) / float(len(a)))
+                    numerator = bamfiles[a.label].count(str(a.id))
                 except ValueError :
-                    coverage.append(1 / float(len(a)))
-            else :
-                coverage.append(len(a))
+                    pass
+
+            coverage.append(numerator / float(denominator))
 
         # loop through columns building up consensus sequence
         s = ""
@@ -497,7 +504,15 @@ class Scaffolder(object) :
         counter = -1
         aligned_contigs = defaultdict(set)
 
-        for fname in glob(join(self.alignments_dir, 'glutton*.nucleotide')) :
+        alignment_files = glob(join(self.alignments_dir, 'glutton*.nucleotide'))
+
+        complete_files = 0
+        total_files = len(alignment_files)
+
+        stderr.write("\rINFO processed %d / %d alignments " % (complete_files, total_files))
+        stderr.flush()
+
+        for fname in alignment_files :
             contigs, genes = self.read_alignment(fname)
             merged_contigs = defaultdict(dict)
 
@@ -537,6 +552,12 @@ class Scaffolder(object) :
                 for index,a in enumerate(new_alignment) :
                     print >> f, a.format_alignment("seq%d" % (index + 1))
 
+            complete_files += 1
+            stderr.write("\rINFO processed %d / %d alignments " % (complete_files, total_files))
+            stderr.flush()
+
+        stderr.write("\rINFO processed %d / %d alignments \n" % (complete_files, total_files))
+        stderr.flush()
 
         self.log.info("created %d multiple sequence alignments" % (counter + 1))
 

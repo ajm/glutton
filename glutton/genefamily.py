@@ -68,7 +68,7 @@ class Gene(object) :
         self.reverse_complement()
 
         for i in range(3) :
-            tmp_seq = Gene(self.name, self.sequence[i:], newid * (i + 4))
+            tmp_seq = Gene(self.name, self.sequence[i:], newid % (i + 4))
             tmp_len = tmp_seq.len_to_stop_codon()
 
             if tmp_len > 100 :
