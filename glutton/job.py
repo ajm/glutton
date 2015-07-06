@@ -11,8 +11,6 @@ from sys import exit
 
 import time
 
-DEBUG_TIMING = True
-
 
 class JobError(Exception) :
     pass
@@ -231,8 +229,8 @@ class PaganJob(Job) :
         except Exception :
             return -1
 
-        self.out_fname          = tmpfile()
-        self.alignment_fname    = tmpfasta(self._alignment)
+        self.out_fname       = tmpfile()
+        self.alignment_fname = tmpfasta(self._alignment)
         
         self.tree_fname = tmpfile(self._tree) if self._tree else None
         
@@ -240,9 +238,9 @@ class PaganJob(Job) :
         start_time = time.time()
         
         result = self.pagan.run(self.query_fname, 
-                              self.out_fname, 
-                              self.alignment_fname, 
-                              self.tree_fname)
+                                self.out_fname, 
+                                self.alignment_fname, 
+                                self.tree_fname)
         
         elapsed_time = time.time() - start_time
         q_count, q_sum, q_min, q_max, q_mean, q_sd = fasta_stats(self.query_fname)

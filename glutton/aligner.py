@@ -17,9 +17,8 @@ from Bio import SeqIO
 
 
 class Aligner(object) :
-    def __init__(self, directory, reference_fname, contig_files, min_identity, min_length, min_hitidentity, min_hitlength, max_evalue, batch_size) :
+    def __init__(self, directory, reference_fname, contig_files, min_length, min_hitidentity, min_hitlength, max_evalue, batch_size) :
         self.directory = directory
-        self.min_identity = min_identity # glutton
         self.min_length = min_length # glutton
         self.min_hitidentity = min_hitidentity # blast 
         self.min_hitlength = min_hitlength # blast
@@ -55,7 +54,7 @@ class Aligner(object) :
                     rejected += 1
                     continue
 
-                qid = self.info.get_query_from_contig(label, r.id)
+                qid = self.info.get_query_from_contig(label, r.description)
             
                 contigs[qid] = biopy_to_gene(r, qid)
                 accepted += 1
@@ -100,7 +99,6 @@ class Aligner(object) :
                     db_fname, 
                     pending_contigs,
                     self.db.nucleotide,
-                    self.min_identity, 
                     self.min_hitidentity,
                     self.min_hitlength,
                     self.max_evalue)
@@ -239,9 +237,18 @@ class Aligner(object) :
             dst = tmpfile(directory=self.directory, suffix='.protein')
             dst_base = basename(dst)[:-8]
 
+
+            self.log.debug("cp %s %s" % (job.protein_alignment, dst))
             shutil.copyfile(job.protein_alignment, dst)
             
+            shutil.copyfile(job.query_fname, dst[:-8] + '.queries')
+            shutil.copyfile(job.alignment_fname, dst[:-8] + '.reference')
+            
+            if job.tree_fname :
+                shutil.copyfile(job.tree_fname, dst[:-8] + '.tree')
+
             if self.db.nucleotide :
+                self.log.debug("cp %s %s" % (job.nucleotide_alignment, dst[:-8] + '.nucleotide'))
                 shutil.copyfile(job.nucleotide_alignment, dst[:-8] + '.nucleotide')
         
             self.info.put_genefamily2filename(job.genefamily, dst_base)

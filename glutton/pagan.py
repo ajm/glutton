@@ -1,9 +1,16 @@
+import tempfile
+import os
+from glob import glob
+from os.path import join
+
 from glutton.base import ExternalTool
+from glutton.utils import get_log, rm_f
 
 class Pagan(ExternalTool) :
     def __init__(self) :
         super(Pagan, self).__init__()
 
+        self.log = get_log()
         self.protein_alignment_fname = None
         self.nucleotide_alignment_fname = None
 
@@ -30,29 +37,53 @@ class Pagan(ExternalTool) :
         return [ outfile + i for i in ('.codon.fas', '.fas', '') ] if outfile else []
 
     def run(self, queries_fname, out_fname, alignment_fname, tree_fname=None) :
+        tmpdir = tempfile.mkdtemp()
+        
+#        parameters = [
+#                      "--ref-seqfile",  alignment_fname,
+#                      "--queryfile",    queries_fname,
+#                      "--outfile",      out_fname,
+#                      "--temp-folder",  tmpdir,
+#                      "--fast-placement",
+#                      "--test-every-terminal-node",
+#                      "--min-query-overlap", "0.1",
+#                      "--translate",
+#                      "--threads", "1"
+#                     ]
+
+        # new pagan options
         parameters = [
                       "--ref-seqfile",  alignment_fname,
                       "--queryfile",    queries_fname,
                       "--outfile",      out_fname,
-                      "--fast-placement",
-                      "--test-every-terminal-node",
-                      "--translate", 
+                      "--temp-folder",  tmpdir,
+                      "--fast",
+                      "--terminal-nodes",
+                      "--min-query-overlap", "0.1",
+                      "--translate",
                       "--threads", "1"
-                      #"--find-best-orf",
-                      #"--fragments"
                      ]
 
         if tree_fname :
             parameters.append("--ref-treefile")
             parameters.append(tree_fname)
-        # unnecessary (see email 27/11/13 from ari)
-        #else :
-        #    parameters.append("--pileup-alignment")
 
         self.protein_alignment_fname = out_fname + '.fas'
         self.nucleotide_alignment_fname = out_fname + '.codon.fas'
 
         returncode, output = self._execute(parameters, self.output_filenames(out_fname))
+
+
+        rm_f(glob(join(tmpdir, "q*.fas")) + glob(join(tmpdir, "t*.fas")))
+
+        try :
+            os.rmdir(tmpdir)
+        
+        except OSError, ose :
+            self.log.error("could not delete '%s': %s" % (tmpdir, str(ose)))
+        
+        # feels risky
+        #shutil.rmtree(tmpdir)
 
         #import os, sys
         #print >> sys.stderr, alignment_fname, tree_fname, queries_fname, self.alignment_fname

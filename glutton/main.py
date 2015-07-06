@@ -14,6 +14,7 @@ import glutton.subcommands
 from glutton.utils import tmpdir, set_threads, num_threads, set_tmpdir, set_verbosity, setup_logging, get_log, duration_str, check_dir
 from glutton.ensembl_sql import custom_database
 from glutton.ensembl_downloader import set_ensembl_download_method
+from glutton.assembler_output import supported_assemblers
 
 
 commands = {
@@ -142,19 +143,18 @@ def handle_args(args) :
                               help='reference database, (normally a .glt file)')
     parser_align.add_argument('-a', '--alignments', type=str, default=default_alignment_dir,
                               help='output directory to store alignment files')
+#    parser_align.add_argument(      '--assembler', type=str, default='trinity', metavar='ASSEMBLER', choices=supported_assemblers,
+#                              help='assembler used to assemble contigs, options are %s' % ', '.join(supported_assemblers))
     
-    parser_align.add_argument('-I', '--hitidentity', type=check_zero_one, default=0.0,
+    parser_align.add_argument('-I', '--hitidentity', type=check_zero_one, default=0.7,
                               help='minimum blast hit identity')
-    parser_align.add_argument('-L', '--hitlength', type=check_non_negative, default=0,
+    parser_align.add_argument('-L', '--hitlength', type=check_non_negative, default=100,
                               help='minimum blast hit length')
     parser_align.add_argument('-E', '--evalue', type=float, default=1e-3,
                               help='maximum blast hit E value')
 
-    parser_align.add_argument('-i', '--identity', type=check_zero_one, default=0.75,
-                              help='minimum query identity for gene assignment step')
     parser_align.add_argument('-x', '--length', type=check_non_negative, default=200,
                               help='minimum contig length for gene assignment step')
-
     parser_align.add_argument('-B', '--batchsize', type=check_greater_than_zero, default=100,
                               help='number of queries per batch for local alignment')
 
@@ -171,6 +171,12 @@ def handle_args(args) :
                              help='directory containing evolutionary alignments')
     parser_scaf.add_argument('-o', '--output', type=str, default=default_scaffold_dir,
                              help='directory to output scaffolded contigs and MSAs')
+    parser_scaf.add_argument(      '--assembler', type=str, default='trinity', metavar='ASSEMBLER', choices=supported_assemblers,
+                             help='assembler used to assemble contigs, options are %s' % ', '.join(supported_assemblers))
+    parser_scaf.add_argument(      '--identity', type=check_zero_one, default=0.5,
+                             help='minimum identity in protein space for contig to be included in alignment')
+    parser_scaf.add_argument(      '--length', type=check_non_negative, default=100,
+                             help='minimum length in nucleotide space for contig to be included in alignment')
 
     add_input_files_options(parser_scaf)
     add_generic_options(parser_scaf)

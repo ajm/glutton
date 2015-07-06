@@ -54,49 +54,45 @@ class Gene(object) :
         tmp = []
         newid = self.id + "_orf%d"
 
-        lens = []
-
         for i in range(3) :
             tmp_seq = Gene(self.name, self.sequence[i:], newid % (i + 1))
-            tmp_len = tmp_seq.len_to_stop_codon()
 
-            if tmp_len > 100 :
+            # TODO make cli options
+            if tmp_seq.max_length_orf() > 100 :
                 tmp.append(tmp_seq)
-
-            lens.append(tmp_len)
 
         self.reverse_complement()
 
         for i in range(3) :
             tmp_seq = Gene(self.name, self.sequence[i:], newid % (i + 4))
-            tmp_len = tmp_seq.len_to_stop_codon()
-
-            if tmp_len > 100 :
+            
+            # TODO make cli options
+            if tmp_seq.max_length_orf() > 100 :
                 tmp.append(tmp_seq)
-
-            lens.append(tmp_len)
 
         self.reverse_complement()
 
-        #print " ".join([ str(i) for i in lens ])
-
         return tmp
 
-    def len_to_stop_codon(self) :
+    def max_length_orf(self) :
         stop_codons = ('TAA','TAG','TGA')
         codons = [ self.sequence[i:i+3] for i in range(0, len(self.sequence), 3) ]
-        min_len = len(codons)
+        indices = [0]
+        max_length = 0
 
-        for sc in stop_codons :
-            if sc not in codons :
-                continue
+        for index,codon in enumerate(codons) :
+            if codon in stop_codons :
+                indices.append(index)
+        
+        indices.append(len(codons))
 
-            seq_len = codons.index(sc)
+        for i in range(len(indices) - 1) :
+            length = indices[i+1] - indices[i]
 
-            if seq_len < min_len :
-                min_len = seq_len
+            if length > max_length :
+                max_length = length
 
-        return min_len * 3
+        return max_length * 3
 
     def reverse_complement(self) :
         self.sequence = self.sequence[::-1]
@@ -215,4 +211,18 @@ def json_to_glutton(families) :
         print >> sys.stderr, "ERROR: %d bad gene families (containing %d genes)" % (bad_family_count, bad_gene_count)
 
     return tmp
+
+if __name__ == '__main__' :
+    from Bio import SeqIO
+
+    s1 = SeqIO.read('test1.fa', 'fasta')
+    s2 = SeqIO.read('test2.fa', 'fasta')
+
+    g1 = Gene(s1.id, s1.seq)
+    for i in g1.open_reading_frames() :
+        print str(i)
+
+    g2 = Gene(s2.id, s2.seq)
+    for i in g2.open_reading_frames() :
+        print str(i)
 

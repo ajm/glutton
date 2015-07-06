@@ -12,7 +12,6 @@ from glutton.queue import WorkQueue
 class All_vs_all_search(object) :
     def __init__(self, batch_size=100) :
         self.nucleotide = False
-        self.min_identity = None
         self.min_hitidentity = None
         self.min_hitlength = None
         self.max_evalue = None
@@ -41,9 +40,8 @@ class All_vs_all_search(object) :
 
         yield tmp
 
-    def process(self, db, queries, nucleotide, min_identity, min_hitidentity, min_hitlength, max_evalue) :
+    def process(self, db, queries, nucleotide, min_hitidentity, min_hitlength, max_evalue) :
         self.nucleotide = nucleotide
-        self.min_identity = min_identity
         self.min_hitidentity = min_hitidentity
         self.min_hitlength = min_hitlength
         self.max_evalue = max_evalue
@@ -111,11 +109,6 @@ class All_vs_all_search(object) :
                 if (self.max_evalue < br.evalue) or \
                         (self.min_hitidentity > br.pident) or \
                         (self.min_hitlength > length) :
-                    continue
-
-                contig_identity = ((br.pident / 100.0) * length) / float(qlen[br.qseqid])
-
-                if contig_identity < self.min_identity :
                     continue
 
                 self.gene_assignments[br.qseqid] = br.sseqid

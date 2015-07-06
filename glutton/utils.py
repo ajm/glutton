@@ -216,14 +216,14 @@ def log_defaults(log) :
 
     ch = logging.StreamHandler()
     ch.setLevel(_glutton_stream_loglevel)
-    ch.setFormatter(logging.Formatter('%(levelname)s %(message)s'))
+    ch.setFormatter(logging.Formatter('%(levelname)s %(threadName)s %(message)s'))
     
     log.addHandler(ch) 
 
 
     fh = logging.FileHandler('glutton.log')
     fh.setLevel(logging.DEBUG)
-    fh.setFormatter(logging.Formatter('%(levelname)s %(message)s'))
+    fh.setFormatter(logging.Formatter('%(levelname)s %(threadName)s %(message)s'))
 
     log.addHandler(fh)
 

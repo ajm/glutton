@@ -1,7 +1,7 @@
 from sys import exit, stderr, stdout
 from glob import glob
 from os.path import join
-from collections import defaultdict, Counter
+from collections import defaultdict
 
 import re
 import operator
@@ -12,6 +12,7 @@ import pysam
 
 from glutton.utils import get_log, check_dir
 from glutton.info import GluttonInformation
+from glutton.assembler_output import AssemblerOutput
 
 
 DEBUG = True
@@ -22,6 +23,43 @@ class ScaffolderError(Exception) :
 scaffold_counter = -1
 scaffold_fmt = "glutton%d"
 
+start_codon = 'ATG'
+stop_codons = ('TAG', 'TAA', 'TGA')
+protein2codons = { 
+        'A' : ('GCT', 'GCC', 'GCA', 'GCG'),
+        'R' : ('CGT', 'CGC', 'CGA', 'CGG', 'AGA', 'AGG'),
+        'N' : ('AAT', 'AAC'),
+        'D' : ('GAT', 'GAC'),
+        'C' : ('TGT', 'TGC'),
+        'Q' : ('CAA', 'CAG'),
+        'E' : ('GAA', 'GAG'),
+        'G' : ('GGT', 'GGC', 'GGA', 'GGG'),
+        'H' : ('CAT', 'CAC'),
+        'I' : ('ATT', 'ATC', 'ATA'),
+        'L' : ('TTA', 'TTG', 'CTT', 'CTC', 'CTA', 'CTG'),
+        'K' : ('AAA', 'AAG'),
+        'M' : ('ATG',),
+        'F' : ('TTT', 'TTC'),
+        'P' : ('CCT', 'CCC', 'CCA', 'CCG'),
+        'S' : ('TCT', 'TCC', 'TCA', 'TCG', 'AGT', 'AGC'),
+        'T' : ('ACT', 'ACC', 'ACA', 'ACG'),
+        'W' : ('TGG',),
+        'Y' : ('TAT', 'TAC'),
+        'V' : ('GTT', 'GTC', 'GTA', 'GTG'),
+        '-' : ('---',),
+        'X' : ('NNN',)
+    }
+
+codon2protein = {}
+
+for k in protein2codons :
+    for v in protein2codons[k] :
+        codon2protein[v] = k
+
+# biopython does not support gapped translation
+def translate(s) :
+    return ''.join([ codon2protein[s[i:i+3]] for i in range(0, len(s), 3) ])
+
 def scaffold_id() :
     global scaffold_fmt, scaffold_counter
 
@@ -30,28 +68,23 @@ def scaffold_id() :
     return scaffold_fmt % scaffold_counter
 
 class Alignment(object) :
-    def __init__(self, id, gene_name, start, end, seq, label, species, desc='singleton', contigs=None) :
-        self.id = id
-        self.gene_name = gene_name
-        self.start = start
-        self.end = end
-        self.seq = seq
-        self.desc = desc
-        self.label = label
-        self.species = species
+    def __init__(self, id, gene_id, gene_name, start, end, seq, label, species, desc='singleton', contigs=None) :
+        self.id = id                # contig id (assembler specific)
+        self.gene_id = gene_id      # gene id (assembler specific)
+        self.gene_name = gene_name  # gene contig is aligned to
+        self.start = start          # start pos
+        self.end = end              # end pos
+        self.seq = seq              # alignment sequence
+        self.desc = desc            # scaffold description, e.g. singleton, merged, etc
+        self.label = label          # sample label (from cli)
+        self.species = species      # species label (from cli)
 
         if contigs :
             self.contigs = contigs
         else :
             self.contigs = [ self.id ]
 
-        if not self.id or not self.gene_name :
-            return
-
-        # XXX when being read from the file this should be verified
-        #     so i don't need to check then fail
-        m = re.match("^(comp\d+\_c\d+)\_seq\d+$", self.id)
-        self.gene_id = m.group(1)
+        assert len(self) != 0, "alignment length was zero!"
 
     def remove_chars(self, indices) :
         for i in sorted(indices, reverse=True) :
@@ -138,6 +171,7 @@ class Alignment(object) :
 
     def __add__(self, a2) :
         return Alignment(self.id, 
+                        self.gene_id,
                         self.gene_name, 
                         min(self.start, a2.start), 
                         max(self.end, a2.end), 
@@ -159,17 +193,20 @@ class Alignment(object) :
 
     def format_contig(self) :
         self.scaffold_id = scaffold_id()
+        contig_value = ','.join([ i.split()[0] for i in self.contigs ])
 
         return ">%s contigs=%s gene=%s desc=%s\n%s" % (\
             self.scaffold_id, \
-            ','.join(self.contigs), \
+            contig_value, \
             self.gene_name, \
             self.desc, \
             self.seq.replace('-', '')\
           )
 
     def truncate_at_stop_codon(self) :
-        self.seq = self.seq_stop_codon()
+        self.seq   = self.seq_stop_codon()
+        self.start = len(self.seq) - len(self.seq.lstrip('-'))
+        self.end   = self.start + len(self.seq.strip('-'))
 
     def seq_stop_codon(self) :
         for i in range(0, len(self.seq), 3) :
@@ -177,12 +214,23 @@ class Alignment(object) :
             
             if codon in ('TAG', 'TAA', 'TGA') :
                 s = self.seq[:i] + ("-" * (len(self.seq) - i))
-                return s.replace('NNN', '---')
+                return self.munge(s)
 
-        return self.seq.replace('NNN', '---')
+        return self.munge(self.seq)
+
+    def munge(self, s) :
+        head,sep,tail = s.rpartition('NNN')
+        
+        if tail.count('-') == len(tail) :
+            return head + '---' + tail
+
+        return s
 
     def format_alignment(self, name) :
         return ">%s species=%s scaffolds=%s\n%s" % (name, self.id, ','.join(self.contigs), self.seq)
+
+    def non_gap_count(self) :
+        return len(self.seq) - self.seq.count('-')
 
     def __len__(self) :
         return self.end - self.start
@@ -192,12 +240,19 @@ class Alignment(object) :
 
 class Alignment2(Alignment) :
     def __init__(self, id, seq, contigs) :
-        super(Alignment2, self).__init__(id, "", -1, -1, seq, "", "", contigs=contigs)
+        start = len(seq) - len(seq.lstrip('-'))
+        end   = start + len(seq.strip('-'))
+        
+        #print >> stderr, "%s %d-%d" % (id, start, end)
+        
+        super(Alignment2, self).__init__(id, "", "", start, end, seq, "", "", contigs=contigs)
 
 class Scaffolder(object) :
-    def __init__(self, alignments_dir, db, contig_files, output_dir) :
+    def __init__(self, alignments_dir, db, contig_files, output_dir, assembler_name, protein_identity, alignment_length) :
         self.alignments_dir     = alignments_dir
         self.output_dir         = output_dir
+        self.protein_identity   = protein_identity
+        self.alignment_length   = alignment_length
 
         check_dir(self.output_dir, create=True)
 
@@ -212,17 +267,10 @@ class Scaffolder(object) :
         if pending != 0 :
             self.log.warn("%d alignments were not run!" % pending)
 
-        # misleading because pagan refuses to align things which are 
-        # distantly related anyway...
-        #if failures != 0 :
-        #    self.log.warn("%d alignments failed!" % failures)
+        self.assembler = AssemblerOutput(assembler_name)
 
-        # e.g. query39806_orf1 [2.2.1363]
-        #self.pagan_orfname_regex = re.compile("(.*)\_orf(\d+) \[(\-?\d+)\.(\d+)\.(\d+)\]")
         # e.g. query39806_orf1
         self.orfname_regex = re.compile("^(query\d+)\_orf(\d)$")
-        # e.g. comp18591_c1_seq4
-        self.trinity_regex = re.compile("^(comp\d+\_c\d+)\_seq\d+$") # just group the trinity gene id, seqX is the isoform id
 
     def stop(self) :
         pass
@@ -235,6 +283,14 @@ class Scaffolder(object) :
 
         return m.group(1)
 
+    def _assembler_gene_name(self, name) :
+        m = self.assembler.match(name)
+
+        if not m :
+            raise ScaffolderError("unexpected gene name (%s)" % name)
+
+        return m.group(1)
+
     # read the alignment file and return a dictionary keyed on the gene name
     #   - there might be multiple orfs for a single query sequence, so keep a track of the best one
     def read_alignment(self, fname) :
@@ -243,7 +299,6 @@ class Scaffolder(object) :
 
         # identity here is the proportion of non-gaps
         def calc_identity(seq1, seq2, start, end) :
-
             if start == end :
                 return 0.0
 
@@ -262,12 +317,24 @@ class Scaffolder(object) :
                 gene_name   = self.db.get_genename_from_geneid(gene_id)
                 gene_seq    = str(s.seq)
 
+                gene_start  = len(gene_seq) - len(gene_seq.lstrip('-'))
+                gene_end    = gene_start + len(gene_seq.strip('-'))
+
+                if (gene_end - gene_start) == 0 :
+                    print >> stderr, "\n\nError: %s from %s (%s) was zero length\n" % (gene_id, fname, gene_name)
+                    gene_id = None
+                    continue
+
                 genes.append((gene_name, gene_seq))
+                continue
+
+            if not gene_id :
                 continue
 
             query_id        = self._orf_to_query_name(s.description)
             contig_id,label = self.info.get_contig_from_query(query_id)
             species         = self.info.label_to_species(label)
+            assembler_geneid = self._assembler_gene_name(contig_id)
 
             seq = str(s.seq).replace('N', '-')
             
@@ -282,7 +349,7 @@ class Scaffolder(object) :
                 if new < old :
                     continue
 
-            # i have seen duplicate sequences before
+            # check for duplicate sequences 
             dup = False
             for details in tmp[gene_name].values() :
                 if details[0] == seq :
@@ -292,19 +359,24 @@ class Scaffolder(object) :
             if dup :
                 continue
 
-            #print gene_name, contig_id
-            tmp[gene_name][contig_id] = (seq, contig_start, contig_end, label, species)
+            if (contig_end - contig_start) == 0 :
+                continue
+
+            # first three need to be seq, contig_start, contig_end
+            tmp[gene_name][contig_id] = (seq, contig_start, contig_end, label, species, assembler_geneid, s.description)
 
         # convert from a dict of dicts to a dict of lists
         tmp2 = defaultdict(list)
 
-        #print fname
+        self.log.debug("read %s" % fname)
         for gene in tmp :
-            #print "\t", gene
+            self.log.debug("\tgene = %s" % gene)
+
             for contig in tmp[gene] :
-                #print "\t\t", contig
-                seq,start,end,label,species = tmp[gene][contig]
-                tmp2[gene].append(Alignment(contig, gene, start, end, seq, label, species))
+                seq,start,end,label,species,assembler_geneid,queryid = tmp[gene][contig]
+                self.log.debug("\t\tquery id = %s (%d,%d)" % (queryid,start,end))
+                
+                tmp2[gene].append(Alignment(contig, assembler_geneid, gene, start, end, seq, label, species))
 
         return tmp2, genes
 
@@ -401,8 +473,8 @@ class Scaffolder(object) :
                 merged_groups.append( reduce(operator.add, sorted(group, key=lambda x : x.start)) )
 
 
-            if DEBUG and (not no_print) and (len(group) > 1) :
-                self.print_alignments(group)
+            #if DEBUG and (not no_print) and (len(group) > 1) :
+            #    self.print_alignments(group)
 
 
         # if there were any conflicts for a given gene in an alignment, then 
@@ -442,45 +514,54 @@ class Scaffolder(object) :
 
         f.close()
 
-    def consensus_for_msa(self, reference, alignment, bamfiles) :
-        if len(alignment) == 1 :
-            return Alignment2(alignment[0].species, alignment[0].seq, [alignment[0].scaffold_id])
+    def trim_at_ATG(self, seq, pos) :
+        for ind in range(0, pos+3, 3)[::-1] :
+            codon = seq[ind : ind+3]
+
+            if codon == 'ATG' :
+                return ('-' * ind) + seq[ind:]
+
+            if codon in ('TAG', 'TAA', 'TGA') :
+                break
+
+        return ('-' * pos) + seq[pos:]    
+
+    # XXX maybe i should truncate on stop codon here?
+    def consensus_for_msa(self, reference, alignments, bamfiles) :
+        ref_start = len(reference) - len(reference.lstrip('-'))
+        
+        if len(alignments) == 1 :
+            seq = self.trim_at_ATG(alignments[0].seq, ref_start)
+            return Alignment2(alignments[0].species, seq, [alignments[0].scaffold_id])
 
         # this is buggy if within a species there are FAKE and real bam files
         coverage = []
-        for a in alignment :
+
+        for a in alignments :
             numerator = 1
-            denominator = len(a) if len(a) > 0 else 1
+            denominator = len(a.seq.replace('-', ''))
 
             if a.label in bamfiles :
                 try :
-                    numerator = bamfiles[a.label].count(str(a.id))
+                    # BWA only uses the fasta id, but we need to store the complete
+                    # description line as an id because soapdenovotrans does not provide
+                    # the locus information in the first token, but the second
+                    id = str(a.id).split()[0] 
+
+                    numerator = bamfiles[a.label].count(id)
+
                 except ValueError :
                     pass
 
             coverage.append(numerator / float(denominator))
 
-        # loop through columns building up consensus sequence
-        s = ""
-        for column_index,column in enumerate(zip(*[ a.seq for a in alignment ])) :
-            counts = Counter()
+        s = "-" * len(alignments[0].seq)
+        
+        for cov,a in sorted(zip(coverage, alignments)) :
+            s = s[:a.start] + a.seq[a.start:a.end] + s[a.end:]
 
-            for alignment_index,chcov in enumerate(zip(column, coverage)) :
-                ch,cov = chcov
-
-                if alignment[alignment_index].in_range(column_index) :
-                    counts[ch] += cov
-
-            # only gaps
-            if not counts :
-                s += '-'
-                continue
-
-            # add column from contig with highest coverage
-            ch,cov = counts.most_common(1)[0]
-            s += ch
-
-        return Alignment2(alignment[0].species, s, [a.scaffold_id for a in alignment])
+        seq = self.trim_at_ATG(s, ref_start)
+        return Alignment2(alignments[0].species, seq, [ a.scaffold_id for a in alignments ])
 
     def remove_common_gaps(self, alignment) :
         indices = []
@@ -494,9 +575,31 @@ class Scaffolder(object) :
 
         return alignment
 
-    def truncate_at_stop_codons(self, alignment) :
-        for a in alignment :
-            a.truncate_at_stop_codon()
+    def protein_similarity(self, ref, query) :
+        if len(query) == 0 :
+            return 0.0
+
+        q = translate(query.seq[query.start:query.end])
+        r = translate(ref.seq[query.start:query.end])
+
+        identical = 0
+        length = 0
+
+        for cq,cr in zip(q,r) :
+            if (cq,cr) == ('-','-') :
+                continue
+
+            # NNN gets translated to X
+            # but don't count these bases toward the similarity score
+            if cq == 'X' :
+                continue
+
+            if cq == cr :
+                identical += 1
+
+            length += 1
+
+        return identical / float(length)
 
     def process_alignments(self, output_files, bam_files) :
         global DEBUG
@@ -513,6 +616,7 @@ class Scaffolder(object) :
         stderr.flush()
 
         for fname in alignment_files :
+            #print >> stderr, "\n%s\n" % fname
             contigs, genes = self.read_alignment(fname)
             merged_contigs = defaultdict(dict)
 
@@ -537,20 +641,40 @@ class Scaffolder(object) :
             # then write out to a file in self.output_dir
             # in MSA have >species_name contents=gluttonX,gluttonY,gluttonZ
             new_alignment = []
+            non_reference_seq = 0
 
             for gene_name,gene_seq in genes :
-                new_alignment.append(Alignment2(self.db.species, gene_seq, [gene_name]))
-                
+                ref = Alignment2(self.db.species, gene_seq, [gene_name])
+                ref.truncate_at_stop_codon()
+                new_alignment.append(ref)
+
                 for species in merged_contigs[gene_name] :
-                    new_alignment.append(self.consensus_for_msa(gene_seq, merged_contigs[gene_name][species], bam_files))
-                
-            self.truncate_at_stop_codons(new_alignment)
+                    tmp = self.consensus_for_msa(gene_seq, merged_contigs[gene_name][species], bam_files)
+                    tmp.truncate_at_stop_codon()
+
+                    # TODO make cli options # delete in favour of alignment_length
+                    #if tmp.non_gap_count() < 100 :
+                    #    continue 
+
+                    # TODO check length vs alignment_length
+                    if len(tmp) < self.alignment_length :
+                        continue
+
+                    # TODO check protein level similarity vs ref
+                    if self.protein_similarity(ref, tmp) < self.protein_identity :
+                        continue
+
+                    new_alignment.append(tmp)
+                    non_reference_seq += 1
+
             self.remove_common_gaps(new_alignment)
 
-            counter += 1
-            with open(join(self.output_dir, "msa%d.fasta" % counter), 'w') as f :
-                for index,a in enumerate(new_alignment) :
-                    print >> f, a.format_alignment("seq%d" % (index + 1))
+            if non_reference_seq != 0 :
+                counter += 1
+
+                with open(join(self.output_dir, "msa%d.fasta" % counter), 'w') as f :
+                    for index,a in enumerate(new_alignment) :
+                        print >> f, a.format_alignment("seq%d" % (index + 1))
 
             complete_files += 1
             stderr.write("\rINFO processed %d / %d alignments " % (complete_files, total_files))
@@ -597,7 +721,7 @@ class Scaffolder(object) :
         return 0
 
     def fasta_output(self, contig, seq, desc) :
-        return ">%s contigs=%s desc=%s\n%s" % (scaffold_id(), contig, desc, seq)
+        return ">%s contigs=%s desc=%s\n%s" % (scaffold_id(), contig.split()[0], desc, seq)
 
     def output_unscaffolded_contigs(self, output_files, aligned_contigs) :
 
@@ -606,18 +730,20 @@ class Scaffolder(object) :
 
             for r in SeqIO.parse(self.info.label_to_contigs(label), 'fasta') :
 
-                if r.id in aligned_contigs[label] :
+                contig_name = r.description
+
+                if contig_name in aligned_contigs[label] :
                     continue
 
                 # unused due to being filtered out
-                if not self.info.contig_used(r.id, label) :
-                    print >> fout, self.fasta_output(r.id, r.seq, 'filtered')
+                if not self.info.contig_used(contig_name, label) :
+                    print >> fout, self.fasta_output(contig_name, r.seq, 'filtered')
 
                 # unassigned by blast
-                elif not self.info.contig_assigned(r.id, label) :
-                    print >> fout, self.fasta_output(r.id, r.seq, 'assignment_failed')
+                elif not self.info.contig_assigned(contig_name, label) :
+                    print >> fout, self.fasta_output(contig_name, r.seq, 'assignment_failed')
 
                 # unaligned by pagan
                 else :
-                    print >> fout, self.fasta_output(r.id, r.seq, 'alignment_failed')
+                    print >> fout, self.fasta_output(contig_name, r.seq, 'alignment_failed')
 

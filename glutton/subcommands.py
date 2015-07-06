@@ -76,8 +76,7 @@ def align_command(args) :
 
     align = Aligner(args.alignments,
                     args.reference, 
-                    contigs, 
-                    args.identity, 
+                    contigs,
                     args.length,
                     args.hitidentity,
                     args.hitlength,
@@ -102,7 +101,10 @@ def scaffold_command(args) :
     scaf = Scaffolder(args.alignments, 
                       args.reference,
                       contigs,
-                      args.output)
+                      args.output,
+                      args.assembler,
+                      args.identity,
+                      args.length)
 
     def _cleanup(signal, frame) :
         print >> stderr, "Killed by user, cleaning up..."

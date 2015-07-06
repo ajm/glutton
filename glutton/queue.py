@@ -3,6 +3,8 @@ import threading
 import Queue
 import time
 import itertools
+import os
+import signal
 
 from glutton.job import Job, JobError
 from glutton.utils import get_log, num_threads
@@ -29,9 +31,6 @@ class WorkQueue(object):
         self.jobs_counter = itertools.count(start=1)
 
         self.start()
-
-    def __del__(self) :
-        self.stop()
 
 #    def _introspect_cores(self) :
 #        return cpu_count()
@@ -62,10 +61,21 @@ class WorkQueue(object):
     # block until the currently running jobs complete
     def stop(self):
         self.log.debug("queue stopping...")
-        self.running = False
         
+        if not self.running :
+            return
+
+        self.running = False
+
         for t in self.workers:
-            t.join()
+            while True :
+                t.join(0.5)
+
+                if not t.is_alive() :
+                    break
+
+                self.log.debug("%s did not exit, resending SIGINT to process group..." % t.name)
+                os.killpg(0, signal.SIGINT)
     
         self.log.debug("queue stopped")
 
@@ -76,18 +86,24 @@ class WorkQueue(object):
         self.log.debug("queue joined")
         self.no_more_jobs = True
 
-        while True :
-            if self.q.empty() :
-                self.log.debug("queue is now empty")
-                break
-
-            time.sleep(5)
-
-        self.q.join() # this makes ctrl-C impossible...
-        self.log.debug("queue drained")
+        #while True :
+        #    if self.q.empty() :
+        #        self.log.debug("queue is now empty")
+        #        break
+        #
+        #    time.sleep(1)
+        #
+        #self.q.join() # this makes ctrl-C impossible...
+        #self.log.debug("queue drained")
 
         for t in self.workers:
-            t.join()
+            while True :
+                t.join(0.5)
+
+                if not t.is_alive() :
+                    break
+
+        self.log.debug("queue drained")
 
     def size(self) :
         return self.q.qsize()
@@ -119,8 +135,9 @@ class WorkQueue(object):
 
         while self.running :
             try :
+                self.log.debug("q.get()")
                 work = self.q.get(timeout=self.q_timeout)
-            
+
             except Queue.Empty, qe:
                 if self.no_more_jobs :
                     self.log.debug("no more jobs...")
@@ -130,6 +147,10 @@ class WorkQueue(object):
 
             self.log.debug("starting %s" % str(work))
             work.run()
+
+            if work.terminated() :
+                self.log.warn("job was terminated, bailing out...")
+                break
 
             self.log.debug("completed %s %s" % (str(work), work.state_str()))
             self.q.task_done()
