@@ -81,7 +81,9 @@ def align_command(args) :
                     args.hitidentity,
                     args.hitlength,
                     args.evalue,
-                    args.batchsize)
+                    args.batchsize,
+                    args.identity,
+                    args.overlap)
 
     def _cleanup(signal, frame) :
         print >> stderr, "Killed by user, cleaning up..."

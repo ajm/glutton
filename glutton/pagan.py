@@ -36,22 +36,9 @@ class Pagan(ExternalTool) :
     def output_filenames(self, outfile) :
         return [ outfile + i for i in ('.codon.fas', '.fas', '') ] if outfile else []
 
-    def run(self, queries_fname, out_fname, alignment_fname, tree_fname=None) :
+    def run(self, queries_fname, out_fname, alignment_fname, tree_fname=None, min_identity=0.5, min_overlap=0.1) :
         tmpdir = tempfile.mkdtemp()
         
-#        parameters = [
-#                      "--ref-seqfile",  alignment_fname,
-#                      "--queryfile",    queries_fname,
-#                      "--outfile",      out_fname,
-#                      "--temp-folder",  tmpdir,
-#                      "--fast-placement",
-#                      "--test-every-terminal-node",
-#                      "--min-query-overlap", "0.1",
-#                      "--translate",
-#                      "--threads", "1"
-#                     ]
-
-        # new pagan options
         parameters = [
                       "--ref-seqfile",  alignment_fname,
                       "--queryfile",    queries_fname,
@@ -59,7 +46,8 @@ class Pagan(ExternalTool) :
                       "--temp-folder",  tmpdir,
                       "--fast",
                       "--terminal-nodes",
-                      "--min-query-overlap", "0.1",
+                      "--min-query-overlap", str(min_overlap),
+                      "--min-query-identity", str(min_identity),
                       "--translate",
                       "--threads", "1"
                      ]

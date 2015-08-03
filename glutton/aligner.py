@@ -17,12 +17,14 @@ from Bio import SeqIO
 
 
 class Aligner(object) :
-    def __init__(self, directory, reference_fname, contig_files, min_length, min_hitidentity, min_hitlength, max_evalue, batch_size) :
+    def __init__(self, directory, reference_fname, contig_files, min_length, min_hitidentity, min_hitlength, max_evalue, batch_size, min_alignidentity, min_alignoverlap) :
         self.directory = directory
         self.min_length = min_length # glutton
         self.min_hitidentity = min_hitidentity # blast 
         self.min_hitlength = min_hitlength # blast
         self.max_evalue = max_evalue # blast
+        self.min_alignidentity = min_alignidentity # pagan
+        self.min_alignoverlap = min_alignoverlap # pagan
 
         check_dir(self.directory, create=True)
 
@@ -151,7 +153,9 @@ class Aligner(object) :
                         job_contigs,
                         famid,
                         alignment,
-                        tree)
+                        tree,
+                        self.min_alignidentity,
+                        self.min_alignoverlap)
                     )
 
                 # avoid the split code later in the loop...

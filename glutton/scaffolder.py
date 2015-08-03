@@ -47,7 +47,8 @@ protein2codons = {
         'Y' : ('TAT', 'TAC'),
         'V' : ('GTT', 'GTC', 'GTA', 'GTG'),
         '-' : ('---',),
-        'X' : ('NNN',)
+        'X' : ('NNN',),
+        '*' : ('TAG', 'TAA', 'TGA')
     }
 
 codon2protein = {}
@@ -59,6 +60,11 @@ for k in protein2codons :
 # biopython does not support gapped translation
 def translate(s) :
     return ''.join([ codon2protein[s[i:i+3]] for i in range(0, len(s), 3) ])
+
+def sequence_limits(s) :
+    start = len(s) - len(s.lstrip('-'))
+    end = start + len(s.strip('-'))
+    return start,end
 
 def scaffold_id() :
     global scaffold_fmt, scaffold_counter
@@ -84,7 +90,8 @@ class Alignment(object) :
         else :
             self.contigs = [ self.id ]
 
-        assert len(self) != 0, "alignment length was zero!"
+        if not len(self) :
+            raise ScaffolderError("alignment length zero")
 
     def remove_chars(self, indices) :
         for i in sorted(indices, reverse=True) :
@@ -204,9 +211,19 @@ class Alignment(object) :
           )
 
     def truncate_at_stop_codon(self) :
+        #return # notrim
+        
+        #log = get_log()
+        #log.debug("(1)" + self.seq)
+
         self.seq   = self.seq_stop_codon()
-        self.start = len(self.seq) - len(self.seq.lstrip('-'))
-        self.end   = self.start + len(self.seq.strip('-'))
+        self.start,self.end = sequence_limits(self.seq)
+        
+        #log.debug("(2)" + self.seq)
+        #log.debug("(3) %d -> %d" % (self.start, self.end))
+
+        if not len(self) :
+            raise ScaffolderError("alignment length zero")
 
     def seq_stop_codon(self) :
         for i in range(0, len(self.seq), 3) :
@@ -240,11 +257,7 @@ class Alignment(object) :
 
 class Alignment2(Alignment) :
     def __init__(self, id, seq, contigs) :
-        start = len(seq) - len(seq.lstrip('-'))
-        end   = start + len(seq.strip('-'))
-        
-        #print >> stderr, "%s %d-%d" % (id, start, end)
-        
+        start,end = sequence_limits(seq)
         super(Alignment2, self).__init__(id, "", "", start, end, seq, "", "", contigs=contigs)
 
 class Scaffolder(object) :
@@ -297,38 +310,15 @@ class Scaffolder(object) :
         tmp = defaultdict(dict)
         genes = []
 
-        # identity here is the proportion of non-gaps
-        def calc_identity(seq1, seq2, start, end) :
-            if start == end :
-                return 0.0
-
-            count = 0
-            for i,j in zip(seq1[start:end], seq2[start:end]) :
-                if (i,j) == ('-','-') :
-                    continue
-                if (i != '-') and (j != '-') :
-                    count += 1
-
-            return count / float(end - start)
-
         for s in SeqIO.parse(fname, 'fasta') :
             if not s.description.startswith('query') :
                 gene_id     = s.description
                 gene_name   = self.db.get_genename_from_geneid(gene_id)
                 gene_seq    = str(s.seq)
-
-                gene_start  = len(gene_seq) - len(gene_seq.lstrip('-'))
-                gene_end    = gene_start + len(gene_seq.strip('-'))
-
-                if (gene_end - gene_start) == 0 :
-                    print >> stderr, "\n\nError: %s from %s (%s) was zero length\n" % (gene_id, fname, gene_name)
-                    gene_id = None
-                    continue
-
+                gene_prot   = translate(gene_seq)
+                gene_start,gene_end = sequence_limits(gene_prot)
+                
                 genes.append((gene_name, gene_seq))
-                continue
-
-            if not gene_id :
                 continue
 
             query_id        = self._orf_to_query_name(s.description)
@@ -338,32 +328,31 @@ class Scaffolder(object) :
 
             seq = str(s.seq).replace('N', '-')
             
-            contig_start = len(seq) - len(seq.lstrip('-'))
-            contig_end   = contig_start + len(seq.strip('-'))
+            contig_start,contig_end = sequence_limits(seq)
 
-            # if we have seen this before
-            if contig_id in tmp[gene_name] :
-                new = calc_identity(gene_seq, seq, contig_start, contig_end)
-                old = calc_identity(gene_seq, *tmp[gene_name][contig_id][:3])
-
-                if new < old :
-                    continue
-
-            # check for duplicate sequences 
-            dup = False
-            for details in tmp[gene_name].values() :
-                if details[0] == seq :
-                    dup = True
-                    break
-
-            if dup :
-                continue
-
+            # pagan bug?
             if (contig_end - contig_start) == 0 :
                 continue
 
+            #self.log.debug("orig ref %s" % gene_prot)
+            #self.log.debug("orig qry %s" % translate(seq))
+
+            ref_identity = self.protein_similarity(gene_prot, 
+                                                   translate(seq), 
+                                                   max(contig_start / 3, gene_start),   # latest start 
+                                                   min(contig_end   / 3, gene_end))     # earliest stop
+
+            # user defined identity in protein space
+            if ref_identity < self.protein_identity :
+                continue
+
+            # if we have seen this before
+            if (contig_id in tmp[gene_name]) and (ref_identity < tmp[gene_name][contig_id][-1]) : 
+                continue
+
             # first three need to be seq, contig_start, contig_end
-            tmp[gene_name][contig_id] = (seq, contig_start, contig_end, label, species, assembler_geneid, s.description)
+            tmp[gene_name][contig_id] = (seq, contig_start, contig_end, label, species, assembler_geneid, s.description, ref_identity)
+
 
         # convert from a dict of dicts to a dict of lists
         tmp2 = defaultdict(list)
@@ -373,10 +362,15 @@ class Scaffolder(object) :
             self.log.debug("\tgene = %s" % gene)
 
             for contig in tmp[gene] :
-                seq,start,end,label,species,assembler_geneid,queryid = tmp[gene][contig]
+                seq,start,end,label,species,assembler_geneid,queryid,ref_identity = tmp[gene][contig]
                 self.log.debug("\t\tquery id = %s (%d,%d)" % (queryid,start,end))
                 
-                tmp2[gene].append(Alignment(contig, assembler_geneid, gene, start, end, seq, label, species))
+                try :
+                    tmp2[gene].append(Alignment(contig, assembler_geneid, gene, start, end, seq, label, species))
+                
+                except ScaffolderError :
+                    self.log.debug("empty sequence %s in %s" % (queryid, fname))
+                    continue
 
         return tmp2, genes
 
@@ -515,6 +509,8 @@ class Scaffolder(object) :
         f.close()
 
     def trim_at_ATG(self, seq, pos) :
+        #return seq # notrim
+
         for ind in range(0, pos+3, 3)[::-1] :
             codon = seq[ind : ind+3]
 
@@ -558,7 +554,12 @@ class Scaffolder(object) :
         s = "-" * len(alignments[0].seq)
         
         for cov,a in sorted(zip(coverage, alignments)) :
-            s = s[:a.start] + a.seq[a.start:a.end] + s[a.end:]
+            tmp = ""
+            
+            for c1,c2 in zip(a.seq[a.start:a.end], s[a.start:a.end]) :
+                tmp += (c1 if c1 not in ('-','N') else c2)
+
+            s = s[:a.start] + tmp + s[a.end:]
 
         seq = self.trim_at_ATG(s, ref_start)
         return Alignment2(alignments[0].species, seq, [ a.scaffold_id for a in alignments ])
@@ -575,29 +576,44 @@ class Scaffolder(object) :
 
         return alignment
 
-    def protein_similarity(self, ref, query) :
-        if len(query) == 0 :
+    def protein_similarity(self, ref, query, start, end) :
+        if (end - start) == 0 :
             return 0.0
 
-        q = translate(query.seq[query.start:query.end])
-        r = translate(ref.seq[query.start:query.end])
+        r = ref[start:end]
+        q = query[start:end]
+
+        # might have overlapped with other queries, but not the reference
+        # in this case it is not going to add much to the result anyway...
+        if r.count('-') == len(r) :
+            return 0.0
 
         identical = 0
         length = 0
+
+        ingap_q = False
+        ingap_r = False
 
         for cq,cr in zip(q,r) :
             if (cq,cr) == ('-','-') :
                 continue
 
-            # NNN gets translated to X
-            # but don't count these bases toward the similarity score
-            if cq == 'X' :
+            # if the gap is already open, just continue
+            if (ingap_q and (cq == '-')) or (ingap_r and (cr == '-')) :
                 continue
+
+            ingap_q = cq == '-'
+            ingap_r = cr == '-'
 
             if cq == cr :
                 identical += 1
 
             length += 1
+
+
+        #self.log.debug("protein sim %d -> %d = %d/%d" % (start, end, identical, length))
+        #self.log.debug('R %d %s' % (len(r), r))
+        #self.log.debug('Q %d %s' % (len(q), q))
 
         return identical / float(length)
 
@@ -649,19 +665,15 @@ class Scaffolder(object) :
                 new_alignment.append(ref)
 
                 for species in merged_contigs[gene_name] :
-                    tmp = self.consensus_for_msa(gene_seq, merged_contigs[gene_name][species], bam_files)
-                    tmp.truncate_at_stop_codon()
+                    try :
+                        tmp = self.consensus_for_msa(gene_seq, merged_contigs[gene_name][species], bam_files)
+                        tmp.truncate_at_stop_codon()
 
-                    # TODO make cli options # delete in favour of alignment_length
-                    #if tmp.non_gap_count() < 100 :
-                    #    continue 
-
-                    # TODO check length vs alignment_length
-                    if len(tmp) < self.alignment_length :
+                    except ScaffolderError, se :
                         continue
-
-                    # TODO check protein level similarity vs ref
-                    if self.protein_similarity(ref, tmp) < self.protein_identity :
+                    
+                    # check length vs alignment_length
+                    if len(tmp) < self.alignment_length :
                         continue
 
                     new_alignment.append(tmp)

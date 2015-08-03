@@ -3,6 +3,7 @@ import sys
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.Alphabet import generic_dna
+from glutton.utils import get_log
 
 # maybe this should extend Sequence from biopython?
 class Gene(object) :
@@ -208,7 +209,7 @@ def json_to_glutton(families) :
             bad_gene_count += len(fam)
 
     if bad_family_count > 0 :
-        print >> sys.stderr, "ERROR: %d bad gene families (containing %d genes)" % (bad_family_count, bad_gene_count)
+        get_log().error("%d bad gene families (containing %d genes)" % (bad_family_count, bad_gene_count))
 
     return tmp
 

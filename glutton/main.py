@@ -156,8 +156,13 @@ def handle_args(args) :
     parser_align.add_argument('-x', '--length', type=check_non_negative, default=200,
                               help='minimum contig length for gene assignment step')
     parser_align.add_argument('-B', '--batchsize', type=check_greater_than_zero, default=100,
-                              help='number of queries per batch for local alignment')
+                              help='batch size for gene assignment step')
 
+    parser_align.add_argument('-i', '--identity', type=check_zero_one, default=0.5,
+                              help='minimum alignment identity')
+    parser_align.add_argument('-o', '--overlap', type=check_zero_one, default=0.1,
+                              help='minimum alignment overlap')
+    
     add_input_files_options(parser_align)
     add_generic_options(parser_align)
 

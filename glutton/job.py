@@ -188,13 +188,15 @@ class BlastJob(Job) :
         return result
 
 class PaganJob(Job) :
-    def __init__(self, callback, queries, genefamily_id, alignment, tree) :
+    def __init__(self, callback, queries, genefamily_id, alignment, tree, identity, overlap) :
         super(PaganJob, self).__init__(callback)
 
         self._queries = queries
         self._genefamily = genefamily_id
         self._alignment = alignment
         self._tree = tree
+        self.identity = identity
+        self.overlap = overlap
 
         self.pagan = Pagan()
 
@@ -240,7 +242,9 @@ class PaganJob(Job) :
         result = self.pagan.run(self.query_fname, 
                                 self.out_fname, 
                                 self.alignment_fname, 
-                                self.tree_fname)
+                                self.tree_fname,
+                                self.identity,
+                                self.overlap)
         
         elapsed_time = time.time() - start_time
         q_count, q_sum, q_min, q_max, q_mean, q_sd = fasta_stats(self.query_fname)
