@@ -1,6 +1,6 @@
 from sys import exit, stderr, stdout
 from glob import glob
-from os.path import join
+from os.path import join, getsize
 from collections import defaultdict
 
 import re
@@ -13,6 +13,11 @@ import pysam
 from glutton.utils import get_log, check_dir
 from glutton.info import GluttonInformation
 from glutton.assembler_output import AssemblerOutput
+
+
+#from pycallgraph import PyCallGraph
+#from pycallgraph.output import GraphvizOutput
+
 
 
 DEBUG = True
@@ -94,8 +99,16 @@ class Alignment(object) :
             raise ScaffolderError("alignment length zero")
 
     def remove_chars(self, indices) :
-        for i in sorted(indices, reverse=True) :
-            self.seq = self.seq[:i] + self.seq[i+1:]
+        tmp = ""
+
+        for i in range(1, len(indices)) :
+            tmp += self.seq[indices[i-1]+1:indices[i]]
+
+        self.seq = tmp
+        self.start,self.end = sequence_limits(self.seq)
+
+        #for i in sorted(indices, reverse=True) :
+        #    self.seq = self.seq[:i] + self.seq[i+1:]
 
     def in_range(self, i) :
         return self.start <= i < self.end
@@ -211,17 +224,9 @@ class Alignment(object) :
           )
 
     def truncate_at_stop_codon(self) :
-        #return # notrim
-        
-        #log = get_log()
-        #log.debug("(1)" + self.seq)
-
         self.seq   = self.seq_stop_codon()
         self.start,self.end = sequence_limits(self.seq)
         
-        #log.debug("(2)" + self.seq)
-        #log.debug("(3) %d -> %d" % (self.start, self.end))
-
         if not len(self) :
             raise ScaffolderError("alignment length zero")
 
@@ -244,7 +249,7 @@ class Alignment(object) :
         return s
 
     def format_alignment(self, name) :
-        return ">%s species=%s scaffolds=%s\n%s" % (name, self.id, ','.join(self.contigs), self.seq)
+        return ">%s species=%s scaffolds=%s id=%.3f len=%d\n%s" % (name, self.id, ','.join(self.contigs), self.prot_id, len(self), self.seq)
 
     def non_gap_count(self) :
         return len(self.seq) - self.seq.count('-')
@@ -306,6 +311,7 @@ class Scaffolder(object) :
 
     # read the alignment file and return a dictionary keyed on the gene name
     #   - there might be multiple orfs for a single query sequence, so keep a track of the best one
+    #@profile
     def read_alignment(self, fname) :
         tmp = defaultdict(dict)
         genes = []
@@ -522,7 +528,7 @@ class Scaffolder(object) :
 
         return ('-' * pos) + seq[pos:]    
 
-    # XXX maybe i should truncate on stop codon here?
+    #@profile
     def consensus_for_msa(self, reference, alignments, bamfiles) :
         ref_start = len(reference) - len(reference.lstrip('-'))
         
@@ -551,25 +557,41 @@ class Scaffolder(object) :
 
             coverage.append(numerator / float(denominator))
 
+
         s = "-" * len(alignments[0].seq)
         
         for cov,a in sorted(zip(coverage, alignments)) :
-            tmp = ""
-            
-            for c1,c2 in zip(a.seq[a.start:a.end], s[a.start:a.end]) :
-                tmp += (c1 if c1 not in ('-','N') else c2)
+            #tmp = ""
+            #for c1,c2 in zip(a.seq[a.start:a.end], s[a.start:a.end]) :
+            #    tmp += (c1 if c1 not in ('-','N') else c2)
 
-            s = s[:a.start] + tmp + s[a.end:]
+            subseq = a.seq[a.start:a.end]
+
+            if 'N' not in subseq :
+                s = s[:a.start] + subseq + s[a.end:]
+            
+            else :
+                tmp = ""
+
+                for ind,c in enumerate(subseq) :
+                    tmp += (c if c != 'N' else s[a.start + ind])
+
+                s = s[:a.start] + tmp + s[a.end:]
+
 
         seq = self.trim_at_ATG(s, ref_start)
         return Alignment2(alignments[0].species, seq, [ a.scaffold_id for a in alignments ])
 
     def remove_common_gaps(self, alignment) :
-        indices = []
+        indices = [-1, len(alignment[0].seq)]
+        num_rows = len(alignment)
         
         for index,chars in enumerate(zip(*[ a.seq for a in alignment ])) :
-            if chars.count('-') == len(chars) :
+            if (chars.count('-') + chars.count('N')) == num_rows :
+            #if chars.count('-') == num_rows :
                 indices.append(index)
+
+        indices.sort()
 
         for a in alignment :
             a.remove_chars(indices)
@@ -577,43 +599,27 @@ class Scaffolder(object) :
         return alignment
 
     def protein_similarity(self, ref, query, start, end) :
-        if (end - start) == 0 :
+        if end <= start :
             return 0.0
 
         r = ref[start:end]
         q = query[start:end]
 
-        # might have overlapped with other queries, but not the reference
-        # in this case it is not going to add much to the result anyway...
-        if r.count('-') == len(r) :
-            return 0.0
-
         identical = 0
         length = 0
-
-        ingap_q = False
-        ingap_r = False
 
         for cq,cr in zip(q,r) :
             if (cq,cr) == ('-','-') :
                 continue
 
-            # if the gap is already open, just continue
-            if (ingap_q and (cq == '-')) or (ingap_r and (cr == '-')) :
+            if cq == 'X' :
                 continue
-
-            ingap_q = cq == '-'
-            ingap_r = cr == '-'
 
             if cq == cr :
                 identical += 1
 
             length += 1
 
-
-        #self.log.debug("protein sim %d -> %d = %d/%d" % (start, end, identical, length))
-        #self.log.debug('R %d %s' % (len(r), r))
-        #self.log.debug('Q %d %s' % (len(q), q))
 
         return identical / float(length)
 
@@ -632,6 +638,15 @@ class Scaffolder(object) :
         stderr.flush()
 
         for fname in alignment_files :
+
+#            if fname == alignment_files[20] :
+#                break
+#
+#            # DEBUG
+#            if getsize(fname) < 2**26 :
+#                print >> stderr, "skipping %s due to file size..." % fname
+#                continue
+
             #print >> stderr, "\n%s\n" % fname
             contigs, genes = self.read_alignment(fname)
             merged_contigs = defaultdict(dict)
@@ -664,6 +679,9 @@ class Scaffolder(object) :
                 ref.truncate_at_stop_codon()
                 new_alignment.append(ref)
 
+                gene_prot = translate(ref.seq)
+                ref.prot_id = 1.0
+
                 for species in merged_contigs[gene_name] :
                     try :
                         tmp = self.consensus_for_msa(gene_seq, merged_contigs[gene_name][species], bam_files)
@@ -671,15 +689,27 @@ class Scaffolder(object) :
 
                     except ScaffolderError, se :
                         continue
-                    
+
                     # check length vs alignment_length
                     if len(tmp) < self.alignment_length :
                         continue
 
+                    prot_identity = self.protein_similarity(gene_prot,
+                                                    translate(tmp.seq),
+                                                    max(tmp.start / 3, ref.start / 3),   # latest start 
+                                                    min(tmp.end / 3, ref.end / 3))     # earliest stop
+
+                    if prot_identity < self.protein_identity :
+                        continue
+
+                    tmp.prot_id = prot_identity
+
                     new_alignment.append(tmp)
                     non_reference_seq += 1
 
+
             self.remove_common_gaps(new_alignment)
+
 
             if non_reference_seq != 0 :
                 counter += 1
@@ -719,6 +749,11 @@ class Scaffolder(object) :
                     continue
 
                 bam_files[label] = pysam.AlignmentFile(bamfilename)
+
+#        graphviz = GraphvizOutput()
+#        graphviz.output_file = 'scaffolder.png'
+#
+#        with PyCallGraph(output=graphviz):
 
         # process alignment files
         aligned_contigs = self.process_alignments(output_files, bam_files)
