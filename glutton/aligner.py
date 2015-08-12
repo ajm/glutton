@@ -57,7 +57,7 @@ class Aligner(object) :
                     continue
 
                 qid = self.info.get_query_from_contig(label, r.description)
-            
+ 
                 contigs[qid] = biopy_to_gene(r, qid)
                 accepted += 1
 
@@ -143,6 +143,10 @@ class Aligner(object) :
                 alignment = self.db.get_alignment(famid)
                 tree = alignment.get_tree()
 
+                for i in genefamily_contig_map[famid] :
+                    if i not in contigs :
+                        self.log.error("%s not found" % i)
+
                 # get contigs
                 job_contigs = [ contigs[i] for i in genefamily_contig_map[famid] ]
 
@@ -178,6 +182,9 @@ class Aligner(object) :
             self.log.warn("gene family was not aligned, breaking down into separate genes...")
             self.total_jobs += (len(genefamily_contig_map[famid]) - 1)
 
+            # collect contigs by gene
+            gene2contigs = collections.defaultdict(list)
+
             for i in genefamily_contig_map[famid] :
                 try :
                     geneid = self.info.query_to_gene(i)
@@ -186,6 +193,10 @@ class Aligner(object) :
                     self.log.warn("no gene assignment for %s" % i)
                     continue
 
+                gene2contigs[geneid].append(i)
+
+            # run each gene separately
+            for geneid in gene2contigs :
                 try :
                     alignment = [ self.db.get_gene(geneid) ]
 
@@ -197,10 +208,12 @@ class Aligner(object) :
                 self.q.enqueue(
                     PaganJob(
                         self.job_callback,
-                        [ contigs[i] ],
+                        [ contigs[i] for i in gene2contigs[geneid] ],
                         geneid,
                         alignment,
-                        None)
+                        None,
+                        self.min_alignidentity,
+                        self.min_alignoverlap)
                     )
 
 

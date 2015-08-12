@@ -147,11 +147,11 @@ def handle_args(args) :
 #                              help='assembler used to assemble contigs, options are %s' % ', '.join(supported_assemblers))
     
     parser_align.add_argument('-I', '--hitidentity', type=check_zero_one, default=0.7,
-                              help='minimum blast hit identity')
+                              help='minimum blastx hit identity')
     parser_align.add_argument('-L', '--hitlength', type=check_non_negative, default=100,
-                              help='minimum blast hit length')
+                              help='minimum blastx hit length')
     parser_align.add_argument('-E', '--evalue', type=float, default=1e-3,
-                              help='maximum blast hit E value')
+                              help='maximum blastx hit E value')
 
     parser_align.add_argument('-x', '--length', type=check_non_negative, default=200,
                               help='minimum contig length for gene assignment step')
