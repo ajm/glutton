@@ -181,7 +181,9 @@ def handle_args(args) :
     parser_scaf.add_argument(      '--identity', type=check_zero_one, default=0.5,
                              help='minimum identity in protein space for contig to be included in alignment')
     parser_scaf.add_argument(      '--length', type=check_non_negative, default=100,
-                             help='minimum length in nucleotide space for contig to be included in alignment')
+                             help='minimum length overlap nucleotide space for contig to be included in alignment')
+    parser_scaf.add_argument(      '--coverage', type=check_zero_one, default=0.0,
+                             help='minimum gene coverage for output consensus alignments')
 
     add_input_files_options(parser_scaf)
     add_generic_options(parser_scaf)

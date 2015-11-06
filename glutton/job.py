@@ -58,14 +58,15 @@ class Job(object) :
     def run(self) :
         self.start()
         
-        try :
-            ret = self._run()
+        ret = self._run()
+        #try :
+        #    ret = self._run()
 
-        except Exception, e :
-            self.log.error(str(e))
-            self.end(Job.INTERNAL_ERROR)
-            self.cleanup()
-            return
+        #except Exception, e :
+        #    self.log.error(str(e))
+        #    self.end(Job.INTERNAL_ERROR)
+        #    self.cleanup()
+        #    return
 
         if ret == 0 :
             self.end(Job.SUCCESS)
@@ -226,13 +227,10 @@ class PaganJob(Job) :
         return [self.query_fname, self.alignment_fname, self.tree_fname] + self.pagan.output_filenames(self.out_fname)
 
     def _run(self) :
-        try :
-            self.query_fname = tmpfasta_orfs(self._queries)
-        except Exception :
-            return -1
 
+        self.query_fname     = tmpfasta_orfs(self._queries)
         self.out_fname       = tmpfile()
-        self.alignment_fname = tmpfasta(self._alignment)
+        self.alignment_fname = tmpfasta(self._alignment) # tmpfasta_kill_n(self._alignment)
         
         self.tree_fname = tmpfile(self._tree) if self._tree else None
         

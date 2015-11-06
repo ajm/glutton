@@ -47,22 +47,26 @@ class Aligner(object) :
 
         for label in self.info.get_sample_ids() :
             accepted = 0
-            rejected = 0
+            rejected = { 'length' : 0, 'ambiguous' : 0 }
 
             fname = self.info.label_to_contigs(label)
 
             for r in SeqIO.parse(fname, 'fasta') :
                 if len(r) < self.min_length :
-                    rejected += 1
+                    rejected['length'] += 1
                     continue
+
+                #if 'N' in r :
+                #    rejected['ambiguous'] += 1
+                #    continue
 
                 qid = self.info.get_query_from_contig(label, r.description)
  
                 contigs[qid] = biopy_to_gene(r, qid)
                 accepted += 1
 
-            self.log.info("%s: read %d contigs (rejected %d due to length < %d)" % 
-                (fname, accepted, rejected, self.min_length))
+            self.log.info("%s: read %d contigs (rejected %d due to length < %d and %d due to 'N's)" %
+                (fname, accepted, rejected['length'], self.min_length, rejected['ambiguous']))
 
         return contigs
 
@@ -143,12 +147,24 @@ class Aligner(object) :
                 alignment = self.db.get_alignment(famid)
                 tree = alignment.get_tree()
 
-                for i in genefamily_contig_map[famid] :
-                    if i not in contigs :
-                        self.log.error("%s not found" % i)
+                #for i in genefamily_contig_map[famid] :
+                #    if i not in contigs :
+                #        self.log.error("%s not found" % i)
 
                 # get contigs
                 job_contigs = [ contigs[i] for i in genefamily_contig_map[famid] ]
+
+                # NOTE: this code was for some special debugging and allowing this kind of behvaiour badly
+                #       messes up the progress ticker (though I could just update that here too...)
+                #job_contigs = []
+                #for i in genefamily_contig_map[famid] :
+                #    try :
+                #        job_contigs.append(contigs[i])
+                #    except KeyError :
+                #        continue
+                #
+                #if not job_contigs :
+                #    continue
 
                 # queue the job
                 self.q.enqueue(

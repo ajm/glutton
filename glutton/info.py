@@ -153,6 +153,15 @@ class GluttonInformation(object) :
         if self.query_gene_map :
             self.log.info("read %d blast results" % len(self.query_gene_map))
 
+        # DEBUG
+        #tmp = []
+        #for i in self.genefamily_filename_map :
+        #    if self.genefamily_filename_map[i] == 'FAIL' :
+        #        tmp.append(i)
+        #for i in tmp :
+        #    del self.genefamily_filename_map[i]
+        # DEBUG
+
         if self.genefamily_filename_map :
             self.log.info("read %d pagan results" % len(self.genefamily_filename_map))
 

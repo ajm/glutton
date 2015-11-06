@@ -104,11 +104,11 @@ class All_vs_all_search(object) :
             qlen = dict([ (q.id, len(q)) for q in job.input ])
 
             for br in job.results :
-                length = max(br.qstart, br.qend) - min(br.qstart, br.qend)
+                #length = max(br.qstart, br.qend) - min(br.qstart, br.qend)
 
                 if (self.max_evalue < br.evalue) or \
                         (self.min_hitidentity > br.pident) or \
-                        (self.min_hitlength > length) :
+                        (self.min_hitlength > br.length) :
                     continue
 
                 self.gene_assignments[br.qseqid] = br.sseqid

@@ -106,6 +106,20 @@ def tmpfasta(seq) :
 
     return fname
 
+def tmpfasta_kill_n(seq) :
+    fname = tmpfile()
+
+    with open(fname, 'w') as f :
+        if isinstance(seq, list) :
+            for s in seq :
+                s.seq = Seq(str(s.seq).replace('N','-'))
+                print >> f, s.format('fasta').rstrip()
+        else :
+            seq.seq = Seq(str(seq.seq).replace('N','-'))
+            print >> f, seq.format('fasta').rstrip()
+
+    return fname
+
 # returns count, total, min, max, mean, pop sd
 def _stats(dat) :
     dat.sort()

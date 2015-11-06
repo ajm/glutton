@@ -51,6 +51,24 @@ class Gene(object) :
 
         return ">%s\n%s\n" % (self.id, seq_to_print)
 
+    # sometimes there are 'N's, remove them so long as they do not cause
+    # a frame shift, if they do, replace the remainder with 'G' or something
+#    def fix_seq(self, seq) :
+#        if 'N' not in seq :
+#            return seq
+#
+#        tmp = str(seq)
+#        tmp2 = ""
+#        for idx in range(0, len(tmp), 3) :
+#            codon = tmp[idx:idx+3]
+#
+#            if codon == 'NNN' :
+#                continue
+#
+#            tmp2 += codon.replace('N','G')
+#
+#        return Seq(tmp2)
+
     def open_reading_frames(self) :
         tmp = []
         newid = self.id + "_orf%d"
@@ -102,7 +120,8 @@ class Gene(object) :
             'A':'T',
             'T':'A',
             'G':'C',
-            'C':'G'
+            'C':'G',
+            'N':'N'
         }
 
         self.sequence = ''.join([ d[i] for i in self.sequence ])

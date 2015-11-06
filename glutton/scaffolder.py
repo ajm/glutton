@@ -249,7 +249,7 @@ class Alignment(object) :
         return s
 
     def format_alignment(self, name) :
-        return ">%s species=%s scaffolds=%s id=%.3f len=%d\n%s" % (name, self.id, ','.join(self.contigs), self.prot_id, len(self), self.seq)
+        return ">%s species=%s scaffolds=%s id=%.3f cov=%.3f len=%d\n%s" % (name, self.id, ','.join(self.contigs), self.prot_id, self.coverage, len(self), self.seq)
 
     def non_gap_count(self) :
         return len(self.seq) - self.seq.count('-')
@@ -266,11 +266,12 @@ class Alignment2(Alignment) :
         super(Alignment2, self).__init__(id, "", "", start, end, seq, "", "", contigs=contigs)
 
 class Scaffolder(object) :
-    def __init__(self, alignments_dir, db, contig_files, output_dir, assembler_name, protein_identity, alignment_length) :
+    def __init__(self, alignments_dir, db, contig_files, output_dir, assembler_name, protein_identity, alignment_length, min_gene_coverage) :
         self.alignments_dir     = alignments_dir
         self.output_dir         = output_dir
         self.protein_identity   = protein_identity
         self.alignment_length   = alignment_length
+        self.min_gene_coverage  = min_gene_coverage
 
         check_dir(self.output_dir, create=True)
 
@@ -340,13 +341,17 @@ class Scaffolder(object) :
             if (contig_end - contig_start) == 0 :
                 continue
 
-            #self.log.debug("orig ref %s" % gene_prot)
-            #self.log.debug("orig qry %s" % translate(seq))
+            overlap_start = max(contig_start / 3, gene_start)
+            overlap_end   = min(contig_end   / 3, gene_end)
+
+            # require all alignments to firmly overlap gene
+            if ((overlap_end - overlap_start) * 3) < 100 :
+                continue
 
             ref_identity = self.protein_similarity(gene_prot, 
                                                    translate(seq), 
-                                                   max(contig_start / 3, gene_start),   # latest start 
-                                                   min(contig_end   / 3, gene_end))     # earliest stop
+                                                   overlap_start,
+                                                   overlap_end)
 
             # user defined identity in protein space
             if ref_identity < self.protein_identity :
@@ -598,6 +603,44 @@ class Scaffolder(object) :
 
         return alignment
 
+    def nucleotide_overlap(self, ref, query, start, end) :
+        if end <= start :
+            return 0
+
+        r = ref[start:end]
+        q = query[start:end]
+
+        covered = 0
+
+        for cq,cr in zip(q,r) :
+            if (cq,cr) == ('-','-') :
+                continue
+
+            if cq == 'N' :
+                continue
+
+            covered += 1
+
+        return covered
+
+    def gene_coverage(self, ref, query) :
+        total = 0
+        covered = 0
+
+        for i in range(ref.start, ref.end) :
+            cq = query.seq[i]
+            cr = ref.seq[i]
+
+            if (cq,cr) == ('-','-') :
+                continue
+
+            if (query.start <= i < query.end) and (cq != 'N') :
+                covered += 1
+
+            total += 1
+
+        return covered / float(total)
+
     def protein_similarity(self, ref, query, start, end) :
         if end <= start :
             return 0.0
@@ -676,11 +719,11 @@ class Scaffolder(object) :
 
             for gene_name,gene_seq in genes :
                 ref = Alignment2(self.db.species, gene_seq, [gene_name])
-                ref.truncate_at_stop_codon()
                 new_alignment.append(ref)
 
                 gene_prot = translate(ref.seq)
                 ref.prot_id = 1.0
+                ref.coverage = 1.0
 
                 for species in merged_contigs[gene_name] :
                     try :
@@ -691,18 +734,32 @@ class Scaffolder(object) :
                         continue
 
                     # check length vs alignment_length
-                    if len(tmp) < self.alignment_length :
+                    #if len(tmp) < self.alignment_length :
+                    #    continue
+
+                    overlap_start = max(tmp.start, ref.start)
+                    overlap_end   = min(tmp.end  , ref.end  )
+
+                    overlap_bases = self.nucleotide_overlap(ref.seq, tmp.seq, overlap_start, overlap_end)
+
+                    if overlap_bases < self.alignment_length :
+                        continue
+
+                    coverage = self.gene_coverage(ref, tmp)
+
+                    if coverage < self.min_gene_coverage :
                         continue
 
                     prot_identity = self.protein_similarity(gene_prot,
                                                     translate(tmp.seq),
-                                                    max(tmp.start / 3, ref.start / 3),   # latest start 
-                                                    min(tmp.end / 3, ref.end / 3))     # earliest stop
+                                                    overlap_start / 3,
+                                                    overlap_end / 3)
 
                     if prot_identity < self.protein_identity :
                         continue
 
                     tmp.prot_id = prot_identity
+                    tmp.coverage = coverage
 
                     new_alignment.append(tmp)
                     non_reference_seq += 1
