@@ -184,6 +184,8 @@ def handle_args(args) :
                              help='minimum length overlap nucleotide space for contig to be included in alignment')
     parser_scaf.add_argument(      '--coverage', type=check_zero_one, default=0.0,
                              help='minimum gene coverage for output consensus alignments')
+    parser_scaf.add_argument(      '--testmode', type=str, default='none', metavar='TESTMODES', choices=('none','length','depth','identity'),
+                             help='do not use the test modes, this is not supported (none, length, depth, identity)')
 
     add_input_files_options(parser_scaf)
     add_generic_options(parser_scaf)

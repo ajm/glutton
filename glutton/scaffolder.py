@@ -1,5 +1,6 @@
 from sys import exit, stderr, stdout
 from glob import glob
+from os import abort
 from os.path import join, getsize
 from collections import defaultdict
 
@@ -266,12 +267,13 @@ class Alignment2(Alignment) :
         super(Alignment2, self).__init__(id, "", "", start, end, seq, "", "", contigs=contigs)
 
 class Scaffolder(object) :
-    def __init__(self, alignments_dir, db, contig_files, output_dir, assembler_name, protein_identity, alignment_length, min_gene_coverage) :
+    def __init__(self, alignments_dir, db, contig_files, output_dir, assembler_name, protein_identity, alignment_length, min_gene_coverage, testmode='none') :
         self.alignments_dir     = alignments_dir
         self.output_dir         = output_dir
         self.protein_identity   = protein_identity
         self.alignment_length   = alignment_length
         self.min_gene_coverage  = min_gene_coverage
+        self.testmode           = testmode
 
         check_dir(self.output_dir, create=True)
 
@@ -308,7 +310,10 @@ class Scaffolder(object) :
         if not m :
             raise ScaffolderError("unexpected gene name (%s)" % name)
 
-        return m.group(1)
+        if m.group(1) :
+            return m.group(1)
+        else :
+            return m.group(2)
 
     # read the alignment file and return a dictionary keyed on the gene name
     #   - there might be multiple orfs for a single query sequence, so keep a track of the best one
@@ -440,6 +445,9 @@ class Scaffolder(object) :
     def merge_alignments(self, alignments) :
         global DEBUG
 
+        if self.testmode != 'none' :
+            return alignments
+
         # perform merges of overlaps first
         unmerged_labels = set()
         merged_groups = []
@@ -520,25 +528,68 @@ class Scaffolder(object) :
         f.close()
 
     def trim_at_ATG(self, seq, pos) :
-        #return seq # notrim
-
+        
         for ind in range(0, pos+3, 3)[::-1] :
             codon = seq[ind : ind+3]
 
-            if codon == 'ATG' :
+            if codon == start_codon :
                 return ('-' * ind) + seq[ind:]
 
-            if codon in ('TAG', 'TAA', 'TGA') :
+            if codon in stop_codons :
                 break
 
         return ('-' * pos) + seq[pos:]    
 
-    #@profile
     def consensus_for_msa(self, reference, alignments, bamfiles) :
-        ref_start = len(reference) - len(reference.lstrip('-'))
-        
+
         if len(alignments) == 1 :
-            seq = self.trim_at_ATG(alignments[0].seq, ref_start)
+            seq = self.trim_at_ATG(alignments[0].seq, reference.start)
+            return Alignment2(alignments[0].species, seq, [alignments[0].scaffold_id])
+
+        if self.testmode == 'none' :
+            return self.consensus_for_msa_glutton(reference, alignments, bamfiles)
+
+        else :
+            lengths = [ len(a.seq.replace('-','')) for a in alignments ]
+            identities = []
+            coverages = []
+
+            gene_prot = translate(reference.seq)
+
+            for a in alignments :
+                # identity
+                overlap_start = max(a.start, reference.start)
+                overlap_end   = min(a.end  , reference.end  )
+
+                ident = self.protein_similarity(gene_prot, translate(a.seq), overlap_start/3, overlap_end/3)
+                identities.append(ident)
+
+                # coverage (depth)
+                if a.label in bamfiles :
+                    try :
+                        id = str(a.id).split()[0]
+                        coverages.append(bamfiles[a.label].count(id))
+                    except :
+                        coverages.append(1)
+
+            coverages = [ c / float(l) for c,l in zip(coverages, lengths) ]
+
+            if self.testmode == 'length' :
+                top_hit = sorted(zip(lengths, identities, coverages, range(len(lengths))))[-1][-1]
+            elif self.testmode == 'identity' :
+                top_hit = sorted(zip(identities, lengths, coverages, range(len(lengths))))[-1][-1]
+            else :
+                top_hit = sorted(zip(coverages, identities, lengths, range(len(lengths))))[-1][-1]
+
+            a = alignments[top_hit]
+            seq = self.trim_at_ATG(a.seq, reference.start)
+            return Alignment2(a.species, seq, [a.scaffold_id])
+
+    #@profile
+    def consensus_for_msa_glutton(self, reference, alignments, bamfiles) :
+
+        if len(alignments) == 1 :
+            seq = self.trim_at_ATG(alignments[0].seq, reference.start)
             return Alignment2(alignments[0].species, seq, [alignments[0].scaffold_id])
 
         # this is buggy if within a species there are FAKE and real bam files
@@ -584,7 +635,7 @@ class Scaffolder(object) :
                 s = s[:a.start] + tmp + s[a.end:]
 
 
-        seq = self.trim_at_ATG(s, ref_start)
+        seq = self.trim_at_ATG(s, reference.start)
         return Alignment2(alignments[0].species, seq, [ a.scaffold_id for a in alignments ])
 
     def remove_common_gaps(self, alignment) :
@@ -721,13 +772,13 @@ class Scaffolder(object) :
                 ref = Alignment2(self.db.species, gene_seq, [gene_name])
                 new_alignment.append(ref)
 
-                gene_prot = translate(ref.seq)
+                #gene_prot = translate(ref.seq)
                 ref.prot_id = 1.0
                 ref.coverage = 1.0
 
                 for species in merged_contigs[gene_name] :
                     try :
-                        tmp = self.consensus_for_msa(gene_seq, merged_contigs[gene_name][species], bam_files)
+                        tmp = self.consensus_for_msa(ref, merged_contigs[gene_name][species], bam_files)
                         tmp.truncate_at_stop_codon()
 
                     except ScaffolderError, se :
@@ -750,10 +801,10 @@ class Scaffolder(object) :
                     if coverage < self.min_gene_coverage :
                         continue
 
-                    prot_identity = self.protein_similarity(gene_prot,
-                                                    translate(tmp.seq),
-                                                    overlap_start / 3,
-                                                    overlap_end / 3)
+                    prot_identity = self.protein_similarity(translate(ref.seq),
+                                                            translate(tmp.seq),
+                                                            overlap_start / 3,
+                                                            overlap_end / 3)
 
                     if prot_identity < self.protein_identity :
                         continue
