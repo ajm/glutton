@@ -270,7 +270,6 @@ class Aligner(object) :
             dst = tmpfile(directory=self.directory, suffix='.protein')
             dst_base = basename(dst)[:-8]
 
-
             self.log.debug("cp %s %s" % (job.protein_alignment, dst))
             shutil.copyfile(job.protein_alignment, dst)
             

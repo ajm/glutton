@@ -96,8 +96,14 @@ class Alignment(object) :
         else :
             self.contigs = [ self.id ]
 
+        self.start_length = len(self)
+
         if not len(self) :
             raise ScaffolderError("alignment length zero")
+
+    @property
+    def contig_id(self) :
+        return str(self.id).split()[0]
 
     def remove_chars(self, indices) :
         tmp = ""
@@ -107,6 +113,9 @@ class Alignment(object) :
 
         self.seq = tmp
         self.start,self.end = sequence_limits(self.seq)
+
+        if not len(self) :
+            raise ScaffolderError("alignment length zero")
 
         #for i in sorted(indices, reverse=True) :
         #    self.seq = self.seq[:i] + self.seq[i+1:]
@@ -137,7 +146,7 @@ class Alignment(object) :
         elif a.end == b.start :
             return (b.start, a.end)
 
-        raise ScaffoldError("impossible condition reached") 
+        raise ScaffolderError("impossible condition reached")
 
     def overlaps(self, a2) :
         return self._ensure_order(a2, self._overlaps)
@@ -203,6 +212,7 @@ class Alignment(object) :
                         self.contigs + a2.contigs)
 
     def __iadd__(self, a2) :
+        raise ScaffolderError("unsupported")
         self.start = min(self.start, a2.start)
         self.end = max(self.end, a2.end)
         self.seq = self.merge_contigs(a2)
@@ -224,6 +234,22 @@ class Alignment(object) :
             self.seq.replace('-', '')\
           )
 
+    def trim_at_ATG(self, pos) :
+        trim_pos = pos
+
+        for ind in range(0, pos+3, 3)[::-1] :
+            codon = self.seq[ind : ind+3]
+
+            if codon == start_codon :
+                trim_pos = ind
+                break
+
+        self.seq = ('-' * trim_pos) + self.seq[trim_pos:]
+        self.start,self.end = sequence_limits(self.seq)
+
+        if not len(self) :
+            raise ScaffolderError("alignment length zero")
+
     def truncate_at_stop_codon(self) :
         self.seq   = self.seq_stop_codon()
         self.start,self.end = sequence_limits(self.seq)
@@ -235,7 +261,7 @@ class Alignment(object) :
         for i in range(0, len(self.seq), 3) :
             codon = self.seq[i : i+3]
             
-            if codon in ('TAG', 'TAA', 'TGA') :
+            if codon in stop_codons :
                 s = self.seq[:i] + ("-" * (len(self.seq) - i))
                 return self.munge(s)
 
@@ -259,7 +285,7 @@ class Alignment(object) :
         return self.end - self.start
 
     def __str__(self) :
-        return str((self.id, self.start, self.end, self.seq))
+        return str((self.id, self.start, self.end, self.start_length, self.seq))
 
 class Alignment2(Alignment) :
     def __init__(self, id, seq, contigs) :
@@ -445,8 +471,8 @@ class Scaffolder(object) :
     def merge_alignments(self, alignments) :
         global DEBUG
 
-        if self.testmode != 'none' :
-            return alignments
+        #if self.testmode != 'none' :
+        #    return alignments
 
         # perform merges of overlaps first
         unmerged_labels = set()
@@ -527,24 +553,29 @@ class Scaffolder(object) :
 
         f.close()
 
+    # XXX now in Alignment class
     def trim_at_ATG(self, seq, pos) :
-        
+        trim_pos = pos
+
         for ind in range(0, pos+3, 3)[::-1] :
             codon = seq[ind : ind+3]
 
             if codon == start_codon :
-                return ('-' * ind) + seq[ind:]
-
-            if codon in stop_codons :
+                trim_pos = ind
                 break
 
-        return ('-' * pos) + seq[pos:]    
+            #if codon in stop_codons :
+            #    break
+
+        return ('-' * trim_pos) + seq[trim_pos:]
 
     def consensus_for_msa(self, reference, alignments, bamfiles) :
 
         if len(alignments) == 1 :
-            seq = self.trim_at_ATG(alignments[0].seq, reference.start)
-            return Alignment2(alignments[0].species, seq, [alignments[0].scaffold_id])
+            a = alignments[0]
+            a.trim_at_ATG(reference.start)
+            a.truncate_at_stop_codon()
+            return Alignment2(a.species, a.seq, [a.contig_id])
 
         if self.testmode == 'none' :
             return self.consensus_for_msa_glutton(reference, alignments, bamfiles)
@@ -582,15 +613,19 @@ class Scaffolder(object) :
                 top_hit = sorted(zip(coverages, identities, lengths, range(len(lengths))))[-1][-1]
 
             a = alignments[top_hit]
-            seq = self.trim_at_ATG(a.seq, reference.start)
-            return Alignment2(a.species, seq, [a.scaffold_id])
+            a.trim_at_ATG(reference.start)
+            a.truncate_at_stop_codon()
+            #seq = self.trim_at_ATG(a.seq, reference.start)
+            return Alignment2(a.species, a.seq, [a.contig_id])
 
     #@profile
     def consensus_for_msa_glutton(self, reference, alignments, bamfiles) :
 
         if len(alignments) == 1 :
-            seq = self.trim_at_ATG(alignments[0].seq, reference.start)
-            return Alignment2(alignments[0].species, seq, [alignments[0].scaffold_id])
+            a = alignments[0]
+            a.trim_at_ATG(reference.start)
+            a.truncate_at_stop_codon()
+            return Alignment2(a.species, a.seq, [a.contig_id])
 
         # this is buggy if within a species there are FAKE and real bam files
         coverage = []
@@ -604,9 +639,9 @@ class Scaffolder(object) :
                     # BWA only uses the fasta id, but we need to store the complete
                     # description line as an id because soapdenovotrans does not provide
                     # the locus information in the first token, but the second
-                    id = str(a.id).split()[0] 
+                    #id = str(a.id).split()[0] # moved to a property in Alignment
 
-                    numerator = bamfiles[a.label].count(id)
+                    numerator = bamfiles[a.label].count(a.contig_id)
 
                 except ValueError :
                     pass
@@ -621,11 +656,13 @@ class Scaffolder(object) :
             #for c1,c2 in zip(a.seq[a.start:a.end], s[a.start:a.end]) :
             #    tmp += (c1 if c1 not in ('-','N') else c2)
 
+            a.trim_at_ATG(reference.start)
+            a.truncate_at_stop_codon()
             subseq = a.seq[a.start:a.end]
 
             if 'N' not in subseq :
                 s = s[:a.start] + subseq + s[a.end:]
-            
+
             else :
                 tmp = ""
 
@@ -634,9 +671,8 @@ class Scaffolder(object) :
 
                 s = s[:a.start] + tmp + s[a.end:]
 
-
-        seq = self.trim_at_ATG(s, reference.start)
-        return Alignment2(alignments[0].species, seq, [ a.scaffold_id for a in alignments ])
+        #s = self.trim_at_ATG(s, reference.start)
+        return Alignment2(alignments[0].species, s, [ a.contig_id for a in alignments ])
 
     def remove_common_gaps(self, alignment) :
         indices = [-1, len(alignment[0].seq)]
@@ -732,16 +768,6 @@ class Scaffolder(object) :
         stderr.flush()
 
         for fname in alignment_files :
-
-#            if fname == alignment_files[20] :
-#                break
-#
-#            # DEBUG
-#            if getsize(fname) < 2**26 :
-#                print >> stderr, "skipping %s due to file size..." % fname
-#                continue
-
-            #print >> stderr, "\n%s\n" % fname
             contigs, genes = self.read_alignment(fname)
             merged_contigs = defaultdict(dict)
 
@@ -751,14 +777,13 @@ class Scaffolder(object) :
                 for a in contigs[gene_name] :
                     aligned_contigs[a.label].add(a.id)
 
-                for a in self.merge_alignments(contigs[gene_name]) :
-                    print >> output_files[a.label], a.format_contig()
-
                     if a.species not in merged_contigs[gene_name] :
                         merged_contigs[gene_name][a.species] = []
 
                     merged_contigs[gene_name][a.species].append(a)
 
+                for a in self.merge_alignments(contigs[gene_name]) :
+                    print >> output_files[a.label], a.format_contig()
 
             # merge sequences from the same species
             # find stop codon and truncate sequences
@@ -779,7 +804,7 @@ class Scaffolder(object) :
                 for species in merged_contigs[gene_name] :
                     try :
                         tmp = self.consensus_for_msa(ref, merged_contigs[gene_name][species], bam_files)
-                        tmp.truncate_at_stop_codon()
+                        #tmp.truncate_at_stop_codon() # this only needs to be here for the testmodes, otherwise it is redundant
 
                     except ScaffolderError, se :
                         continue
