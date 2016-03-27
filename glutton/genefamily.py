@@ -69,7 +69,7 @@ class Gene(object) :
 #
 #        return Seq(tmp2)
 
-    def open_reading_frames(self) :
+    def open_reading_frames(self, strand=False) :
         tmp = []
         newid = self.id + "_orf%d"
 
@@ -80,6 +80,10 @@ class Gene(object) :
             if tmp_seq.max_length_orf() > 100 :
                 tmp.append(tmp_seq)
 
+        if strand :
+            return tmp
+
+        # ORFs on the other strand
         self.reverse_complement()
 
         for i in range(3) :

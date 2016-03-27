@@ -228,7 +228,8 @@ class PaganJob(Job) :
 
     def _run(self) :
 
-        self.query_fname     = tmpfasta_orfs(self._queries)
+        self.query_fname     = tmpfasta_orfs(self._queries, strand=True)
+        #self.query_fname     = tmpfasta(self._queries)
         self.out_fname       = tmpfile()
         self.alignment_fname = tmpfasta(self._alignment) # tmpfasta_kill_n(self._alignment)
         
@@ -248,8 +249,8 @@ class PaganJob(Job) :
         q_count, q_sum, q_min, q_max, q_mean, q_sd = fasta_stats(self.query_fname)
         a_count, a_sum, a_min, a_max, a_mean, a_sd = fasta_stats(self.alignment_fname)
 
-        threadsafe_io('pagan_stats.txt', "%d %d %d %d %d %.3f %.3f %d %d %d %d %.3f %.3f %d" % \
-                                            (result, \
+        threadsafe_io('pagan_stats.txt', "%s %d %d %d %d %d %.3f %.3f %d %d %d %d %.3f %.3f %d" % \
+                                            (self._genefamily, result, \
                                              q_count, q_sum, q_min, q_max, q_mean, q_sd, \
                                              a_count, a_sum, a_min, a_max, a_mean, a_sd, \
                                              elapsed_time))

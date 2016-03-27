@@ -146,7 +146,7 @@ def handle_args(args) :
 #    parser_align.add_argument(      '--assembler', type=str, default='trinity', metavar='ASSEMBLER', choices=supported_assemblers,
 #                              help='assembler used to assemble contigs, options are %s' % ', '.join(supported_assemblers))
     
-    parser_align.add_argument('-I', '--hitidentity', type=check_zero_one, default=0.7,
+    parser_align.add_argument('-I', '--hitidentity', type=check_zero_one, default=0.3,
                               help='minimum blastx hit identity')
     parser_align.add_argument('-L', '--hitlength', type=check_non_negative, default=100,
                               help='minimum blastx hit length')
@@ -158,7 +158,7 @@ def handle_args(args) :
     parser_align.add_argument('-B', '--batchsize', type=check_greater_than_zero, default=100,
                               help='batch size for gene assignment step')
 
-    parser_align.add_argument('-i', '--identity', type=check_zero_one, default=0.5,
+    parser_align.add_argument('-i', '--identity', type=check_zero_one, default=0.3,
                               help='minimum alignment identity')
     parser_align.add_argument('-o', '--overlap', type=check_zero_one, default=0.1,
                               help='minimum alignment overlap')
@@ -178,7 +178,7 @@ def handle_args(args) :
                              help='directory to output scaffolded contigs and MSAs')
     parser_scaf.add_argument(      '--assembler', type=str, default='trinity', metavar='ASSEMBLER', choices=supported_assemblers,
                              help='assembler used to assemble contigs, options are %s' % ', '.join(supported_assemblers))
-    parser_scaf.add_argument(      '--identity', type=check_zero_one, default=0.5,
+    parser_scaf.add_argument(      '--identity', type=check_zero_one, default=0.3,
                              help='minimum identity in protein space for contig to be included in alignment')
     parser_scaf.add_argument(      '--length', type=check_non_negative, default=100,
                              help='minimum length overlap nucleotide space for contig to be included in alignment')

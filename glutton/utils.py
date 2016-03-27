@@ -139,15 +139,15 @@ def fasta_stats(fname) :
 
     return _stats(data)
 
-def tmpfasta_orfs(seq) :
+def tmpfasta_orfs(seq, strand=False) :
     fname = tmpfile()
 
     tmp = []
     if isinstance(seq, list) :
         for s in seq :
-            tmp += s.open_reading_frames()
+            tmp += s.open_reading_frames(strand)
     else :
-        tmp += seq.open_reading_frames()
+        tmp += seq.open_reading_frames(strand)
 
     if not tmp :
         raise Exception("nothing to write!")

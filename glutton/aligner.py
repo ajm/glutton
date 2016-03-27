@@ -81,6 +81,12 @@ class Aligner(object) :
 
         self.info.flush()
 
+    def _correct_strand(self, contig, strand) :
+        if strand == '-' :
+            contig.reverse_complement()
+
+        return contig
+
     def align(self) :
         self.log.info("starting alignment procedure")
 
@@ -116,8 +122,8 @@ class Aligner(object) :
         self.info.flush()
 
         # use the database to convert the mapping from tmp id -> gene
-        # to gene family -> list of tmp ids
-        genefamily_contig_map = self.info.build_genefamily2contigs()
+        # to gene family -> list of (tmp id, strands)
+        genefamily_contig_map = self.info.build_genefamily2contigs() # XXX <---- up to here
         
         self.log.info("%d contigs assigned to %d gene families" % 
                 (sum([ len(i) for i in genefamily_contig_map.values() ]), len(genefamily_contig_map)))
@@ -147,24 +153,8 @@ class Aligner(object) :
                 alignment = self.db.get_alignment(famid)
                 tree = alignment.get_tree()
 
-                #for i in genefamily_contig_map[famid] :
-                #    if i not in contigs :
-                #        self.log.error("%s not found" % i)
-
                 # get contigs
-                job_contigs = [ contigs[i] for i in genefamily_contig_map[famid] ]
-
-                # NOTE: this code was for some special debugging and allowing this kind of behvaiour badly
-                #       messes up the progress ticker (though I could just update that here too...)
-                #job_contigs = []
-                #for i in genefamily_contig_map[famid] :
-                #    try :
-                #        job_contigs.append(contigs[i])
-                #    except KeyError :
-                #        continue
-                #
-                #if not job_contigs :
-                #    continue
+                job_contigs = [ self._correct_strand(contigs[contigid], strand) for contigid,strand in genefamily_contig_map[famid] ]
 
                 # queue the job
                 self.q.enqueue(
@@ -201,15 +191,15 @@ class Aligner(object) :
             # collect contigs by gene
             gene2contigs = collections.defaultdict(list)
 
-            for i in genefamily_contig_map[famid] :
+            for contigid,strand in genefamily_contig_map[famid] :
                 try :
-                    geneid = self.info.query_to_gene(i)
+                    geneid = self.info.query_to_gene(contigid)
 
                 except KeyError : # this should be impossible
-                    self.log.warn("no gene assignment for %s" % i)
+                    self.log.warn("no gene assignment for %s" % contigid)
                     continue
 
-                gene2contigs[geneid].append(i)
+                gene2contigs[geneid].append((contigid, strand))
 
             # run each gene separately
             for geneid in gene2contigs :
@@ -224,7 +214,7 @@ class Aligner(object) :
                 self.q.enqueue(
                     PaganJob(
                         self.job_callback,
-                        [ contigs[i] for i in gene2contigs[geneid] ],
+                        [ self._correct_strand(contigs[contigid], strand) for contigid,strand in gene2contigs[geneid] ],
                         geneid,
                         alignment,
                         None,
@@ -240,8 +230,7 @@ class Aligner(object) :
         self.info.flush()
 
     def sort_keys_by_complexity(self, d) :
-        #return [ k for k,v in sorted(d.items(), reverse=True, key=lambda x : seqlen(x[1])) ]
-        return [ k for l,k,v in sorted([ (seqlen(v), k, v) for k,v in d.items() ], reverse=True) ]
+        return [ k for l,k,v in sorted([ (len(v), k, v) for k,v in d.items() ], reverse=True) ]
 
     def _progress(self) :
         self.lock.acquire()

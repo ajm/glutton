@@ -44,7 +44,7 @@ class GluttonInformation(object) :
 
         self.params = {}
         self.contig_query_map = {}          # file id -> contig id -> query id (file id is provided by the user, called a 'label')
-        self.query_gene_map = {}            # query id -> gene id
+        self.query_gene_map = {}            # query id -> (gene id, +/-) or None
         self.genefamily_filename_map = {}   # gene family id -> filename
 
         self.read_progress_files()
@@ -296,10 +296,11 @@ class GluttonInformation(object) :
         genefamily_contig_map = collections.defaultdict(list)
 
         for i in self.query_gene_map :
-            if self.query_gene_map[i] == 'FAIL' :
+            if self.query_gene_map[i] == None :
                 continue
 
-            genefamily_contig_map[self.db.get_familyid_from_geneid(self.query_gene_map[i])].append(i)
+            geneid,strand = self.query_gene_map[i]
+            genefamily_contig_map[self.db.get_familyid_from_geneid(geneid)].append((i,strand))
         
         return genefamily_contig_map
 
@@ -362,11 +363,12 @@ class GluttonInformation(object) :
     def contig_assigned(self, contig_id, label) :
         qid = self.contig_query_map[label][contig_id]
 
-        return self.query_gene_map[qid] != 'FAIL'
+        return self.query_gene_map[qid] != None
 
     @do_locking
     def query_to_gene(self, query_id) :
-        return self.query_gene_map[query_id]
+        geneid,strand = self.query_gene_map[query_id]
+        return geneid
 
 #    @do_locking
 #    def contig_aligned(self, contig_id) :

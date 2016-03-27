@@ -105,17 +105,19 @@ class All_vs_all_search(object) :
 
             for br in job.results :
                 #length = max(br.qstart, br.qend) - min(br.qstart, br.qend)
+                strand = '+' if br.qstart < br.qend else '-'
 
-                if (self.max_evalue < br.evalue) or \
+                if (br.qseqid in self.gene_assignments) or \
+                        (self.max_evalue < br.evalue) or \
                         (self.min_hitidentity > br.pident) or \
                         (self.min_hitlength > br.length) :
                     continue
 
-                self.gene_assignments[br.qseqid] = br.sseqid
+                self.gene_assignments[br.qseqid] = (br.sseqid, strand)
 
         for q in job.input :
             if q.id not in self.gene_assignments :
-                self.gene_assignments[q.id] = 'FAIL'
+                self.gene_assignments[q.id] = None
 
         self.lock.release()
 
