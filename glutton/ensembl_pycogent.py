@@ -17,12 +17,12 @@ def get_missing_info(species, release, database_name) :
 def get_all_species_pycogent(db, suppress) :
     log = get_log()
 
-    try :
-        from cogent.db.ensembl import Species
+    #try :
+    from cogent.db.ensembl import Species
 
-    except ImportError :
-        log.fatal("importing pycogent failed, exiting...")
-        exit(1)
+    #except ImportError :
+    #    log.fatal("pycogent import failed, exiting...")
+    #    exit(1)
 
     log.warning("pycogent cannot differentiate between ensembl projects, listing everything...")
 
@@ -34,14 +34,14 @@ def get_all_species_pycogent(db, suppress) :
 def download_database_pycogent(species, release, database_name='ensembl', nucleotide=False) :
     log = get_log()
 
-    try :
-        import cogent
-        from cogent.db.ensembl import Species, Genome, Compara, HostAccount
-        from cogent.db.ensembl.database import Database
+    #try :
+    import cogent
+    from cogent.db.ensembl import Species, Genome, Compara, HostAccount
+    from cogent.db.ensembl.database import Database
 
-    except ImportError :
-        log.fatal("importing pycogent failed, exiting...")
-        exit(1)
+    #except ImportError :
+    #    log.fatal("pycogent import failed, exiting...")
+    #    exit(1)
 
     if cogent.version_info != (1,5,3) :
         log.warning("only tested with pycogent version 1.5.3 (you are running %s)" % cogent.version)

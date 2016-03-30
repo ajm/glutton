@@ -31,7 +31,7 @@ def list_command(args) :
 
     try :
         pretty_print_table(
-            ('Species name', 'Releases'), 
+            ('Species', 'Release'), 
             e.get_all_species(db=args.database_name, 
                               suppress=args.suppress))
 

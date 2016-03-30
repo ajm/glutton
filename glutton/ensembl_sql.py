@@ -25,7 +25,7 @@ ensembl_sql_hosts = {
             'ensembl-genomes' : {
                     'username' : 'anonymous',
                     'password' : '',
-                    'hostname' : 'mysql.ebi.ac.uk',
+                    'hostname' : 'mysql-eg-publicsql.ebi.ac.uk',
                     'port'     : 4157
                 }
         }

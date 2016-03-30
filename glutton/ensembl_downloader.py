@@ -7,7 +7,7 @@ from glutton.ensembl_pycogent import download_database_pycogent, get_all_species
 from glutton.ensembl_sql import download_database_sql, get_all_species_sql, get_latest_release_sql, ReleaseNotFoundError, SQLQueryError, NoResultsError
 
 
-ENSEMBL_METHODS = ('biomart', 'sql', 'pycogent')
+ENSEMBL_METHODS = ('biomart', 'sql') #, 'pycogent')
 DEFAULT_METHOD = 'biomart'
 
 def set_ensembl_download_method(method) :
@@ -68,8 +68,8 @@ class EnsemblDownloader(object) :
         except SQLQueryError, sql :
             raise EnsemblDownloadError(' '.join(sql.message.replace('\\n', '').split()))
 
-        except Exception, e :
-            raise EnsemblDownloadError(e.message + " (" + self.method + ")")
+        #except Exception, e :
+        #    raise EnsemblDownloadError(e.message + " (" + self.method + ")")
 
     # returns peptide sequences + homologies
     def download(self, species, release=None, database_name='ensembl', nucleotide=False) :
@@ -98,6 +98,6 @@ class EnsemblDownloader(object) :
 #        except UnsupportedError, ue :
 #            raise EnsemblDownloadError(ue.message)
 
-        except Exception, e :
-            raise EnsemblDownloadError(e.message + " (" + self.method + ")")
+        #except Exception, e :
+        #    raise EnsemblDownloadError(e.message + " (" + self.method + ")")
 

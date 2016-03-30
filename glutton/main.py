@@ -13,7 +13,7 @@ import glutton.subcommands
 
 from glutton.utils import tmpdir, set_threads, num_threads, set_tmpdir, set_verbosity, setup_logging, get_log, duration_str, check_dir
 from glutton.ensembl_sql import custom_database
-from glutton.ensembl_downloader import set_ensembl_download_method
+from glutton.ensembl_downloader import set_ensembl_download_method, ENSEMBL_METHODS
 from glutton.assembler_output import supported_assemblers
 
 
@@ -91,15 +91,13 @@ def handle_args(args) :
 
     subparsers = parser.add_subparsers(help='subcommands')
 
-    ensembl_methods = ('sql', 'biomart', 'pycogent')
-
     # list options
     parser_list = subparsers.add_parser('list', formatter_class=fmt,
                              help='list ensembl species')
     parser_list.add_argument('-v', '--verbose',  action='count', default=0,   
                              help='set verbosity, can be set multiple times e.g.: -vvv')
-    parser_list.add_argument('-m', '--download-method', default='biomart', metavar='METHOD', choices=ensembl_methods,
-                             help='specific download method, options are %s' % ', '.join(ensembl_methods))
+    parser_list.add_argument('-m', '--download-method', default='biomart', metavar='METHOD', choices=ENSEMBL_METHODS,
+                             help='specific download method, options are %s' % ', '.join(ENSEMBL_METHODS))
     parser_list.add_argument('--suppress', type=int,
                              help='suppress older releases (default depends on database)')
     add_database_options(parser_list)
@@ -119,8 +117,8 @@ def handle_args(args) :
 #                              help='download protein sequences instead of CDS sequences')
     parser_build.add_argument('--download-only', action='store_true',
                               help='download sequences and homology information, then exit')
-    parser_build.add_argument('-m', '--download-method', default='biomart', metavar='METHOD', choices=ensembl_methods,
-                             help='specific download method, options are %s' % ', '.join(ensembl_methods))
+    parser_build.add_argument('-m', '--download-method', default='biomart', metavar='METHOD', choices=ENSEMBL_METHODS,
+                             help='specific download method, options are %s' % ', '.join(ENSEMBL_METHODS))
 
     add_database_options(parser_build)
     add_generic_options(parser_build)
@@ -176,7 +174,7 @@ def handle_args(args) :
                              help='directory containing evolutionary alignments')
     parser_scaf.add_argument('-o', '--output', type=str, default=default_scaffold_dir,
                              help='directory to output scaffolded contigs and MSAs')
-    parser_scaf.add_argument(      '--assembler', type=str, default='trinity', metavar='ASSEMBLER', choices=supported_assemblers,
+    parser_scaf.add_argument(      '--assembler', type=str, default='none', metavar='ASSEMBLER', choices=supported_assemblers,
                              help='assembler used to assemble contigs, options are %s' % ', '.join(supported_assemblers))
     parser_scaf.add_argument(      '--identity', type=check_zero_one, default=0.3,
                              help='minimum identity in protein space for contig to be included in alignment')
