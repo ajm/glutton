@@ -31,7 +31,7 @@ def do_locking(fn) :
 class GluttonException(Exception) :
     pass
 
-GluttonSample = namedtuple('GluttonSample', ['id','species','contigs','checksum','bam'])
+GluttonSample = collections.namedtuple('GluttonSample', ['id','species','contigs','checksum','bam'])
 
 class GluttonJSON(object) :
     def __init__(self) :
