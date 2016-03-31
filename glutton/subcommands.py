@@ -8,6 +8,7 @@ from glutton.table import pretty_print_table
 from glutton.db import GluttonDB, GluttonDBBuildError
 from glutton.aligner import Aligner
 from glutton.scaffolder import Scaffolder
+from glutton.info import GluttonParameters
 
 
 def list_command(args) :
@@ -72,11 +73,10 @@ def check_command(args) :
     return 0 if GluttonDB(args.gltfile).sanity_check(human_readable_summary=True, suppress_errmsg=True, show_all=args.show) else 1        
 
 def align_command(args) :
-    contigs = zip(args.contigs, args.label, args.species, args.bam) if args.contigs else []
+    #contigs = zip(args.contigs, args.label, args.species, args.bam) if args.contigs else []
 
-    align = Aligner(args.alignments,
+    align = Aligner(args.project,
                     args.reference, 
-                    contigs,
                     args.length,
                     args.hitidentity,
                     args.hitlength,
@@ -98,17 +98,12 @@ def align_command(args) :
     return 0
 
 def scaffold_command(args) :
-    contigs = zip(args.contigs, args.label, args.species, args.bam) if args.contigs else []
-
-    scaf = Scaffolder(args.alignments, 
+    scaf = Scaffolder(args.project, 
                       args.reference,
-                      contigs,
-                      args.output,
                       args.assembler,
                       args.identity,
                       args.length,
-                      args.coverage,
-                      args.testmode)
+                      args.coverage)
 
     def _cleanup(signal, frame) :
         print >> stderr, "Killed by user, cleaning up..."
@@ -119,6 +114,27 @@ def scaffold_command(args) :
     signal.signal(signal.SIGINT, _cleanup)
 
     scaf.scaffold()
+
+    return 0
+
+def setup_command(args) :
+    if args.setupcmd == 'add' :
+        gp = GluttonParameters(args.project, create=True)
+        gp.add(args.contigs, args.sample, args.species, args.bam, args.assembler, copy=args.copy)
+        gp.flush()
+
+        print >> stderr, "added %s (%s contains %d samples)" (args.sample, args.project, gp.count())
+
+    elif args.setupcmd == 'remove' :
+        gp = GluttonParameters(args.project, create=False)
+        gp.remove(args.sample)
+        gp.flush()
+
+        print >> stderr, "removed %s (%s contains %d samples)" (args.sample, args.project, gp.count())
+
+    elif args.setupcmd == 'list' :
+        gp = GluttonParameters(args.project, create=False)
+        gp.list()
 
     return 0
 

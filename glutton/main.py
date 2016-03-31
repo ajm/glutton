@@ -21,6 +21,7 @@ commands = {
     'list'      : glutton.subcommands.list_command,
     'build'     : glutton.subcommands.build_command,
     'check'     : glutton.subcommands.check_command,
+    'setup'     : glutton.subcommands.setup_command,
     'align'     : glutton.subcommands.align_command,
     'scaffold'  : glutton.subcommands.scaffold_command
 }
@@ -131,19 +132,47 @@ def handle_args(args) :
                               help='show which gene families have not been aligned')
 
     
-    default_alignment_dir = './alignment_results'
-    default_scaffold_dir = './scaffold_results'
+    default_project_dir = './glutton_out'
+
+    # sample options
+    parser_setup = subparsers.add_parser('setup', formatter_class=fmt,
+                                          help='add/remove/list samples from a %s project' % glutton.__name__)
+    parser_setup.add_argument('--project', type=str, default=default_project_dir,
+                               help='project directory (default=%s)' % default_project_dir)
+
+    group = parser_setup.add_mutually_exclusive_group()
+    group.add_argument('--add', action='store_const', dest='setupcmd', const="add",
+                       help='add sample to project')
+    group.add_argument('--remove', action='store_const', dest='setupcmd', const="remove",
+                       help='remove sample from project')
+    group.add_argument('--list', action='store_const', dest='setupcmd', const="list",
+                       help='list samples imported into project')
+
+    parser_setup.add_argument('--sample',   type=str,
+                              help='unique sample identifier')
+    parser_setup.add_argument('--contigs', type=str,
+                              help='FASTA file containing contigs from sample')
+    parser_setup.add_argument('--assembler', type=str, default='none', metavar='ASSEMBLER', choices=supported_assemblers,
+                              help='assembler used to assemble contigs, options are %s' % ', '.join(supported_assemblers))
+    parser_setup.add_argument('--species', type=str,
+                              help='species name for sample')
+    parser_setup.add_argument('--bam', type=str,
+                              help='BAM file of reads mapped to contigs')
+
+    parser_setup.add_argument('--copy', action='store_true',
+                              help='copy FASTA and BAM files into project directory')
+    parser_setup.set_defaults(setupcmd='list')
 
     # align options
     parser_align = subparsers.add_parser('align', formatter_class=fmt,
                               help='align contigs against reference transcript database')
     parser_align.add_argument('-g', '--reference', type=str,
                               help='reference database, (normally a .glt file)')
-    parser_align.add_argument('-a', '--alignments', type=str, default=default_alignment_dir,
-                              help='output directory to store alignment files')
-#    parser_align.add_argument(      '--assembler', type=str, default='trinity', metavar='ASSEMBLER', choices=supported_assemblers,
-#                              help='assembler used to assemble contigs, options are %s' % ', '.join(supported_assemblers))
-    
+    parser_align.add_argument('--project', type=str, default=default_project_dir,
+                              help='project directory (default=%s)' % default_project_dir)
+#    parser_align.add_argument('-a', '--alignments', type=str, default=default_alignment_dir,
+#                              help='output directory to store alignment files')
+
     parser_align.add_argument('-I', '--hitidentity', type=check_zero_one, default=0.3,
                               help='minimum blastx hit identity')
     parser_align.add_argument('-L', '--hitlength', type=check_non_negative, default=100,
@@ -161,7 +190,6 @@ def handle_args(args) :
     parser_align.add_argument('-o', '--overlap', type=check_zero_one, default=0.1,
                               help='minimum alignment overlap')
     
-    add_input_files_options(parser_align)
     add_generic_options(parser_align)
 
 
@@ -170,10 +198,8 @@ def handle_args(args) :
                              help='scaffold contigs together based on evolutionary alignment results')
     parser_scaf.add_argument('-g', '--reference', type=str,
                              help='reference database, (normally a .glt file)')
-    parser_scaf.add_argument('-a', '--alignments', type=str, default=default_alignment_dir,
-                             help='directory containing evolutionary alignments')
-    parser_scaf.add_argument('-o', '--output', type=str, default=default_scaffold_dir,
-                             help='directory to output scaffolded contigs and MSAs')
+    parser_scaf.add_argument(      '--project', type=str, default=default_project_dir,
+                              help='project directory (default=%s)' % default_project_dir)
     parser_scaf.add_argument(      '--assembler', type=str, default='none', metavar='ASSEMBLER', choices=supported_assemblers,
                              help='assembler used to assemble contigs, options are %s' % ', '.join(supported_assemblers))
     parser_scaf.add_argument(      '--identity', type=check_zero_one, default=0.3,
@@ -182,10 +208,9 @@ def handle_args(args) :
                              help='minimum length overlap nucleotide space for contig to be included in alignment')
     parser_scaf.add_argument(      '--coverage', type=check_zero_one, default=0.0,
                              help='minimum gene coverage for output consensus alignments')
-    parser_scaf.add_argument(      '--testmode', type=str, default='none', metavar='TESTMODES', choices=('none','length','depth','identity'),
-                             help='do not use the test modes, this is not supported (none, length, depth, identity)')
+#    parser_scaf.add_argument(      '--testmode', type=str, default='none', metavar='TESTMODES', choices=('none','length','depth','identity'),
+#                             help='do not use the test modes, this is not supported (none, length, depth, identity)')
 
-    add_input_files_options(parser_scaf)
     add_generic_options(parser_scaf)
 
 
@@ -195,7 +220,6 @@ def handle_args(args) :
 # different subcommands have the same options, so they must be tested
 # for in order for this to be generic
 def generic_options(args) :
-    # database
     if hasattr(args, 'database_host') and args.database_host :
         custom_database(args.database_host, 
                         args.database_port, 
@@ -250,35 +274,17 @@ def generic_options(args) :
     if hasattr(args, 'contigs') :
         if args.contigs :
             if not args.label or not args.species :
-                print >> stderr, "ERROR: you must specify one --label and one --species argument per --contigs file!"
+                print >> stderr, "ERROR: you must specify one --sample and one --species argument per --contigs file!"
                 exit(1)
 
-            l = len(args.contigs)
-            if (l != len(args.label)) or (l != len(args.species)) :
-                print >> stderr, "ERROR: you must specify one --label and --species argument per --contigs file! (%d contig files, %d labels, %d species)" % \
-                        (l, len(args.label), len(args.species))
-                exit(1)
+    if hasattr(args, 'setupcmd') :
+        if args.setupcmd == 'add' and None in (args.sample, args.contigs, args.species) :
+            print >> stderr, "ERROR: to add a sample, you must specify sample identifier, contig FASTA file and species name (see glutton setup -h)"
+            exit(1)
 
-            if (l != len(set(args.label))) :
-                print >> stderr, "ERROR: file labels must be unique!"
-                exit(1)
-
-            if (args.bam != None) and (len(args.bam) != l) :
-                print >> stderr, "ERROR: if you must either specify bam files for all samples or no samples! (%d samples, %d bam files)" % \
-                        (l, len(args.bam))
-                exit(1)
-
-            if args.bam == None :
-                args.bam = [ None ] * l
-
-            bad = False
-            for fname in [ f for f in args.contigs + args.bam if f ] :
-                if fname != 'FAKE' and not os.path.isfile(fname) :
-                    print >> stderr, "ERROR: %s not found" % fname
-                    bad = True
-
-            if bad :
-                exit(1)
+        elif args.setupcmd == 'remove' and not args.sample :
+            print >> stderr, "ERROR: no sample identifier found"
+            exit(1)
 
     setup_logging()
 

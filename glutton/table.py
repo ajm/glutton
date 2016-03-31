@@ -6,6 +6,11 @@ def _sanity_check_data(data, columns) :
 
     return True
 
+def _safe_len(datum) :
+    if not datum :
+        return 4
+    return len(datum)
+
 # data is assumed to be a list of tuples
 def pretty_print_table(headings, data) :
     spacer = 4
@@ -17,7 +22,7 @@ def pretty_print_table(headings, data) :
     # generate format string using column widths
     fmt = ""
     for i in range(num_columns) :
-        fmt += ("%%-%ds" % (max([len(headings[i])] + [ len(d[i]) for d in data ]) + spacer))
+        fmt += ("%%-%ds" % (max([len(headings[i])] + [ _safe_len(d[i]) for d in data ]) + spacer))
 
     # print the actual table
     s = fmt % tuple(headings)

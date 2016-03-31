@@ -293,9 +293,9 @@ class Alignment2(Alignment) :
         super(Alignment2, self).__init__(id, "", "", start, end, seq, "", "", contigs=contigs)
 
 class Scaffolder(object) :
-    def __init__(self, alignments_dir, db, contig_files, output_dir, assembler_name, protein_identity, alignment_length, min_gene_coverage, testmode='none') :
-        self.alignments_dir     = alignments_dir
-        self.output_dir         = output_dir
+    def __init__(self, top_level_directory, reference_fname, assembler_name, protein_identity, alignment_length, min_gene_coverage, testmode='none') :
+        self.alignments_dir     = join(top_level_directory, 'alignments')
+        self.output_dir         = join(top_level_directory, 'scaffolds')
         self.protein_identity   = protein_identity
         self.alignment_length   = alignment_length
         self.min_gene_coverage  = min_gene_coverage
@@ -305,9 +305,9 @@ class Scaffolder(object) :
 
         self.log = get_log()
 
-        self.info = GluttonInformation(alignments_dir, db, contig_files)
-
-        self.db = self.info.get_db()
+        self.param = GluttonParameters(top_level_diretory)
+        self.db = GluttonDB(reference_fname)
+        self.info = GluttonInformation(self.alignment_dir, self.param, self.db)
 
         # perhaps slightly overambitious to exit, just stick to a warning      
         pending,failures = self.info.num_alignments_not_done()
@@ -361,7 +361,7 @@ class Scaffolder(object) :
 
             query_id        = self._orf_to_query_name(s.description)
             contig_id,label = self.info.get_contig_from_query(query_id)
-            species         = self.info.label_to_species(label)
+            species         = self.param.get_species(label)
             assembler_geneid = self._assembler_gene_name(contig_id)
 
             seq = str(s.seq).replace('N', '-')
@@ -874,7 +874,7 @@ class Scaffolder(object) :
             self.log.info("creating %s ..." % fname)
             output_files[label] = open(fname, 'w')
 
-            bamfilename = self.info.label_to_bam(label)
+            bamfilename = self.param.get_bam(label)
 
             if bamfilename :
                 if bamfilename == 'FAKE' :
@@ -908,7 +908,7 @@ class Scaffolder(object) :
         for label in self.info.get_sample_ids() :
             fout = output_files[label]
 
-            for r in SeqIO.parse(self.info.label_to_contigs(label), 'fasta') :
+            for r in SeqIO.parse(self.param.get_contigs(label), 'fasta') :
 
                 contig_name = r.description
 

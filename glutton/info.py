@@ -7,6 +7,7 @@ from os.path import isfile, join, abspath
 
 from glutton.db import GluttonDB
 from glutton.utils import get_log, md5, check_dir
+from glutton.table import pretty_print_table
 
 
 PARAM_FILE  = 'parameters.json'
@@ -30,9 +31,112 @@ def do_locking(fn) :
 class GluttonException(Exception) :
     pass
 
-class GluttonInformation(object) :
-    def __init__(self, alignments_dir, db_obj_or_filename=None, contig_files=[]) :
+GluttonSample = namedtuple('GluttonSample', ['id','species','contigs','checksum','bam'])
+
+class GluttonJSON(object) :
+    def __init__(self) :
+        self.log = get_log()
+
+    def load(self, fname) :
+        if isfile(fname) :
+            self.log.info("found progress file %s ..." % fname)
+            return json.loads(open(fname).read())
+
+        return {}
+
+    def dump(self, fname, data) :
+        if data :
+            open(fname, 'w').write(json.dumps(data, sort_keys=True, indent=4, separators=(',', ': ')))
+
+class GluttonParameters(GluttonJSON) :
+    def __init__(self, project_dir, create=False) :
+        self.directory = project_dir
+        self.create = create
+        check_dir(self.directory, create=self.create)
+
+        self.log = get_log()
+
+        self.params = self.load(self.parameter_filename)
+
+        if not self.params :
+            self.params = { 'db_species'    : None,
+                            'db_release'    : None,
+                            'db_filename'   : None,
+                            'db_checksum'   : None,
+                            'samples'       : {} }
+
+    @property
+    def parameter_filename(self) :
+        global PARAM_FILE
+        return join(self.directory, PARAM_FILE)
+
+    def get_sample_ids(self) :
+        return self.params['samples'].keys()
+    
+    def add(self, contigfile, sampleid, species, bamfile=None, assembler=None, copy=False) :
+        self.log.info("adding %s (%s, %s, %s, %s)" % (sampleid, species, contigfile, bamfile, assembler))
+        contigfile = self.copy(contigfile) if copy else abspath(contigfile)
+        bamfile = self.copy(bamfile) if copy else abspath(bamfile) if bamfile else bamfile 
+
+        self.params['samples'][sampleid] = { 'contigs'   : contigfile,
+                                             'checksum'  : md5(contigfile),
+                                             'species'   : species,
+                                             'bam'       : bamfile,
+                                             'assembler' : assembler }
+
+    def copy(self, src) :
+        data_dir = join(self.directory, 'data')
+        check_dir(data_dir, create=True)
+        dst = join(data_dir, basename(src))
+        self.log("cp %s %s" % (src, dst))
+        shutil.copy(src, dst)
+        return dst
+
+    def remove(self, sampleid) :
+        self.log.info("removing %s" % sampleid)
+        del self.params['samples'][sampleid]
+
+    def list(self) :
+        if not self.params['db_filename'] :
+            print "No reference used..."
+        else :
+            pretty_print_table(('SPECIES','RELEASE','FILENAME','CHECKSUM'), \
+                [(self.params['db_species'], self.params['db_release'], self.params['db_filename'], self.params['db_checksum'])])
+        
+        if self.count() == 0 :
+            print "No samples found..."
+        else :
+            pretty_print_table(('SAMPLE','SPECIES','CONTIGS','MD5','BAM'), \
+                [ (k,v['species'], v['contigs'], v['checksum'], v['bam']) for k,v in self.params['samples'].iteritems() ])
+
+    def count(self) :
+        return len(self.params['samples'])
+
+    def flush(self) :
+        self.dump(self.parameter_filename, self.params)
+
+    def get_species(self, id) :
+        return self.params['samples'][id]['species']
+
+    def get_checksum(self, id) :
+        return self.params['samples'][id]['checksum']
+
+    def get_contigs(self, id) :
+        return self.params['samples'][id]['contigs']
+
+    def get_bam(self, id) :
+        return self.params['samples'][id]['bam']
+
+    def all(self) :
+        for k,v in self.params['samples'].iteritems() :
+            yield GluttonSample(id=k, contigs=v['contigs'], species=v['species'], bam=v['bam'], checksum=v['checksum'])
+
+class GluttonInformation(GluttonJSON) :
+    def __init__(self, alignments_dir, parameters, db) :
         self.directory = alignments_dir
+        self.params = parameters
+        self.db = db
+
         check_dir(self.directory)
 
         self.log = get_log()
@@ -42,65 +146,12 @@ class GluttonInformation(object) :
         # restartable, in addition - if we restart it then we need to be sure that 
         # the parameters used are the same, i.e.: same reference database etc etc
 
-        self.params = {}
         self.contig_query_map = {}          # file id -> contig id -> query id (file id is provided by the user, called a 'label')
         self.query_gene_map = {}            # query id -> (gene id, +/-) or None
         self.genefamily_filename_map = {}   # gene family id -> filename
 
         self.read_progress_files()
 
-        if ((not db_obj_or_filename) or (not contig_files)) and (not self.params) :
-            self.log.fatal("reference database and contig files must be specified if you are not continuing from a previous run!")
-            exit(1)
-
-        if isinstance(db_obj_or_filename, str) :
-            self.db = GluttonDB(db_obj_or_filename) 
-        elif isinstance(db_obj_or_filename, GluttonDB) :
-            self.db = db_obj_or_filename
-        elif db_obj_or_filename is None :
-            self.db = GluttonDB(self.params['db_filename'])
-
-        if not self.params :
-            self.params = self.get_params(contig_files)
-            self.write_progress_files()
-        else :
-            # contig files may not be specified if the command is being restarted
-            # check that the files are there and that the contents is the same as
-            # the last time we saw them
-            try :
-                self.check_params(contig_files)
-
-            except IOError, ioe :
-                self.log.fatal(str(ioe))
-            
-                if not contig_files :
-                    self.log.fatal("contig files appear to have moved, respecify with --contigs")
-            
-                exit(1)
-
-    def get_db(self) :
-        return self.db
-
-    def get_sample_ids(self) :
-        return self.params['samples'].keys()
-
-    def _get_contig_files(self) :
-        tmp = []
-
-        for label in self.params['samples'] :
-            s = self.params['samples'][label]
-            tmp.append((s['contigs'], label, s['species'], s['bam']))
-
-        return tmp
-
-    # files used for recording the progress are just dirty globals
-    # at the moment these properties can be in place of a decent solution
-    # for now...
-    @property
-    def parameter_filename(self) :
-        global PARAM_FILE
-        return join(self.directory, PARAM_FILE)
-   
     @property
     def contig_filename(self) :
         global CONTIG_FILE
@@ -121,31 +172,10 @@ class GluttonInformation(object) :
         self.write_progress_files()
         self.log.info("done")
 
-    # functions and utilities to read and write the different progress files
-    #
-    def _load(self, fname) :
-        if isfile(fname) :
-            self.log.info("found progress file %s ..." % fname)
-            return json.loads(open(fname).read())
-
-        return {}
-
-    def _dump(self, fname, data) :
-        if data :
-            open(fname, 'w').write(json.dumps(data))
-
     def read_progress_files(self) :
-        self.params                     = self._load(self.parameter_filename)
-        self.contig_query_map           = self._load(self.contig_filename)
-        self.query_gene_map             = self._load(self.blast_filename)
-        self.genefamily_filename_map    = self._load(self.pagan_filename)
-
-        if self.params :
-            self.log.info("read %d sample%s from %d species" % (\
-                    len(self.params['samples']),
-                    "s" if len(self.params['samples']) else "" ,
-                    len(set([ self.params['samples'][s]['species'] for s in self.params['samples'] ]))
-                  ))
+        self.contig_query_map           = self.load(self.contig_filename)
+        self.query_gene_map             = self.load(self.blast_filename)
+        self.genefamily_filename_map    = self.load(self.pagan_filename)
 
         if self.contig_query_map :
             self.log.info("read %d contig to query id mappings" % sum([ len(self.contig_query_map[label]) for label in self.contig_query_map ]))
@@ -153,85 +183,14 @@ class GluttonInformation(object) :
         if self.query_gene_map :
             self.log.info("read %d blast results" % len(self.query_gene_map))
 
-        # DEBUG
-        #tmp = []
-        #for i in self.genefamily_filename_map :
-        #    if self.genefamily_filename_map[i] == 'FAIL' :
-        #        tmp.append(i)
-        #for i in tmp :
-        #    del self.genefamily_filename_map[i]
-        # DEBUG
-
         if self.genefamily_filename_map :
             self.log.info("read %d pagan results" % len(self.genefamily_filename_map))
 
     @do_locking
     def write_progress_files(self) :
-        self._dump(self.parameter_filename, self.params)
-        self._dump(self.contig_filename,    self.contig_query_map)
-        self._dump(self.blast_filename,     self.query_gene_map)
-        self._dump(self.pagan_filename,     self.genefamily_filename_map)
-
-    # related to database parameters
-    #
-    def get_params(self, contig_files) :
-        p = {}
-
-        p['db_species']  = self.db.species
-        p['db_release']  = self.db.release
-        p['db_filename'] = self.db.filename
-        p['db_checksum'] = self.db.checksum
-
-        p['samples'] = {}
-
-        for filename,label,species,bamfilename in contig_files :
-            p['samples'][label] = { "species"   : species,
-                                    "contigs"   : filename,
-                                    "checksum"  : md5(filename),
-                                    "bam"       : bamfilename }
-
-        return p
-
-    @do_locking
-    def check_params(self, contig_files) :
-        if not contig_files :
-            contig_files = self._get_contig_files()
-
-        db_params = self.get_params(contig_files)
-
-        if self._not_same_parameters(db_params) :
-            self.log.fatal("found different reference/input files/parameters!")
-            
-            self.log.fatal("original:")
-            self._print_params(self.params)
-            
-            self.log.fatal("current:")
-            self._print_params(db_params)
-            
-            exit(1)
-
-        # this might seem odd, but the parameters can be the same (i.e. the contents of the files is
-        #the same), but the actual locations of the files can change, so just set it globally
-        self.params = db_params
-        self.write_progress_files()
-
-    def _print_params(self, p) :
-        self.log.fatal("%s/%d" % (p['db_species'], p['db_release']))
-
-        for label in p['samples'] :
-            s = p['samples'][label]
-            self.log.fatal("\t%s label=%s species=%s md5=%s bam=%s" % (s['contigs'], label, s['species'], s['checksum'], str(s['bam'])))
-
-    def _not_same_parameters(self, par) :
-        def get_checksums(p) :
-            tmp = [ ( p['db_checksum'], ) ]
-            for label in p['samples'] :
-                s = p['samples'][label]
-                tmp.append((label, s['species'], s['checksum']))
-            tmp.sort()
-            return tmp
-
-        return get_checksums(self.params) != get_checksums(par)
+        self.dump(self.contig_filename,    self.contig_query_map)
+        self.dump(self.blast_filename,     self.query_gene_map)
+        self.dump(self.pagan_filename,     self.genefamily_filename_map)
 
     def _set_id_counter(self) :
         tmp = [0]
@@ -340,18 +299,6 @@ class GluttonInformation(object) :
                 return False
 
         return True
-
-    def label_to_species(self, label) :
-        return self.params['samples'][label]['species']
-
-    def label_to_checksum(self, label) :
-        return self.params['samples'][label]['checksum']
-
-    def label_to_contigs(self, label) :
-        return self.params['samples'][label]['contigs']
-
-    def label_to_bam(self, label) :
-        return self.params['samples'][label]['bam']
 
     # functions used by scaffolder
     #

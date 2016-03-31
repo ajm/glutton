@@ -11,14 +11,14 @@ from glutton.job import PaganJob
 from glutton.genefamily import Gene, biopy_to_gene, seqlen
 from glutton.info import GluttonInformation
 
-from os.path import isfile, basename
+from os.path import isfile, basename, join
 
 from Bio import SeqIO
 
 
 class Aligner(object) :
-    def __init__(self, directory, reference_fname, contig_files, min_length, min_hitidentity, min_hitlength, max_evalue, batch_size, min_alignidentity, min_alignoverlap) :
-        self.directory = directory
+    def __init__(self, top_level_directory, reference_fname, min_length, min_hitidentity, min_hitlength, max_evalue, batch_size, min_alignidentity, min_alignoverlap) :
+        self.directory = join(top_level_directory, 'alignments')
         self.min_length = min_length # glutton
         self.min_hitidentity = min_hitidentity # blast 
         self.min_hitlength = min_hitlength # blast
@@ -38,18 +38,18 @@ class Aligner(object) :
 
         self.log = get_log()
 
-        self.info = GluttonInformation(directory, reference_fname, contig_files)
+        self.param = GluttonParameters(top_level_directory)
+        self.db = GluttonDB(reference_fname)
+        self.info = GluttonInformation(self.directory, self.param, self.db)
         
-        self.db = self.info.get_db()    
-
     def _read_contigs(self) :
         contigs = {}
 
-        for label in self.info.get_sample_ids() :
+        for label in self.param.get_sample_ids() :
             accepted = 0
             rejected = { 'length' : 0, 'ambiguous' : 0 }
 
-            fname = self.info.label_to_contigs(label)
+            fname = self.param.sample_to_contigs(label)
 
             for r in SeqIO.parse(fname, 'fasta') :
                 if len(r) < self.min_length :
@@ -123,7 +123,7 @@ class Aligner(object) :
 
         # use the database to convert the mapping from tmp id -> gene
         # to gene family -> list of (tmp id, strands)
-        genefamily_contig_map = self.info.build_genefamily2contigs() # XXX <---- up to here
+        genefamily_contig_map = self.info.build_genefamily2contigs()
         
         self.log.info("%d contigs assigned to %d gene families" % 
                 (sum([ len(i) for i in genefamily_contig_map.values() ]), len(genefamily_contig_map)))
