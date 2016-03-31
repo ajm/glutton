@@ -24,15 +24,15 @@ def list_command(args) :
         }
 
     if not args.suppress :
-        args.suppress = suppression_defaults[args.database_name]
+        args.suppress = suppression_defaults[args.database]
 
-    log.info("listing species in %s database" % args.database_name)
+    log.info("listing species in %s database" % args.database)
     log.info("suppressing releases prior to %d" % args.suppress)
 
     try :
         pretty_print_table(
             ('Species', 'Release'), 
-            e.get_all_species(db=args.database_name, 
+            e.get_all_species(db=args.database, 
                               suppress=args.suppress))
 
     except EnsemblDownloadError, ede :
@@ -56,9 +56,9 @@ def build_command(args) :
         gdb.build(args.output, 
               args.species, 
               args.release, 
-              args.database_name,
+              args.database,
               True, #not args.protein, 
-              args.download_only)
+              args.download)
 
     except GluttonDBBuildError, nmgfe :
         log.fatal(nmgfe.message)

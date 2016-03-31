@@ -205,7 +205,8 @@ class GluttonDB(object) :
 
             # default name if it was not defined
             if not self.fname :
-                self.fname = "%s_%d_%s_%s.glt" % (species, release, "nuc" if nucleotide else "pep", get_ensembl_download_method())
+                #self.fname = "%s_%d_%s_%s.glt" % (species, release, "nuc" if nucleotide else "pep", get_ensembl_download_method())
+                self.fname = "%s_%d.glt" % (species, release)
                 self.log.info("database filename not specified, using '%s'" % self.fname)
 
             # are we resuming or starting fresh?

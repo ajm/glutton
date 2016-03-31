@@ -49,7 +49,7 @@ def handle_args(args) :
     def add_database_options(par) :
         ensembl_db = ('ensembl', 'metazoa', 'fungi', 'protists', 'plants')
 
-        par.add_argument('-d', '--database-name', default='ensembl', metavar='DB', choices=ensembl_db,
+        par.add_argument('-d', '--database', default='ensembl', metavar='DB', choices=ensembl_db,
                          help='specify main ensembl database or one of the ensembl-genomes databases, options are %s' % ', '.join(ensembl_db))
         par.add_argument('--database-host', type=str, 
                          help='specify database hostname')
@@ -96,7 +96,7 @@ def handle_args(args) :
                              help='list ensembl species')
     parser_list.add_argument('-v', '--verbose',  action='count', default=0,   
                              help='set verbosity, can be set multiple times e.g.: -vvv')
-    parser_list.add_argument('-m', '--download-method', default='biomart', metavar='METHOD', choices=ENSEMBL_METHODS,
+    parser_list.add_argument('-m', '--method', default='biomart', metavar='METHOD', choices=ENSEMBL_METHODS,
                              help='specific download method, options are %s' % ', '.join(ENSEMBL_METHODS))
     parser_list.add_argument('--suppress', type=int,
                              help='suppress older releases (default depends on database)')
@@ -115,9 +115,9 @@ def handle_args(args) :
                               help='output filename (default: SPECIES_RELEASE.glt)')
 #    parser_build.add_argument('-p', '--protein', action='store_true',
 #                              help='download protein sequences instead of CDS sequences')
-    parser_build.add_argument('--download-only', action='store_true',
+    parser_build.add_argument('--download', action='store_true',
                               help='download sequences and homology information, then exit')
-    parser_build.add_argument('-m', '--download-method', default='biomart', metavar='METHOD', choices=ENSEMBL_METHODS,
+    parser_build.add_argument('-m', '--method', default='biomart', metavar='METHOD', choices=ENSEMBL_METHODS,
                              help='specific download method, options are %s' % ', '.join(ENSEMBL_METHODS))
 
     add_database_options(parser_build)
@@ -239,8 +239,8 @@ def generic_options(args) :
         set_verbosity(args.verbose)
 
     # ensembl download method
-    if hasattr(args, 'download_method') :
-        set_ensembl_download_method(args.download_method)
+    if hasattr(args, 'method') :
+        set_ensembl_download_method(args.method)
 
     # contigs, labels, species, bam files
     # contigs, labels amd bam files must be unique
