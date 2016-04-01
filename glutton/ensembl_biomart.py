@@ -173,10 +173,12 @@ def get_sequences(species, database_name, schema_name, table_name, nucleotide) :
 </Query>"""
 
     # e.g. 'dipodomys_ordii': ('dordii_gene_ensembl', 'Dipodomys ordii genes (dipOrd1)')
-    #
     seq_type = 'coding' if nucleotide else 'peptide'
-    query = payload_sequences % (schema_name if database_name != 'ensembl' else 'default', table_name, seq_type)
+    #query = payload_sequences % (schema_name if database_name != 'ensembl' else 'default', table_name, seq_type)
+    query = payload_sequences % (database_name + '_mart' if database_name != 'ensembl' else 'default', table_name, seq_type)
     params = urllib.urlencode({ 'query' : query })
+
+    print query
 
     sequences = {}
 
@@ -196,6 +198,9 @@ def get_sequences(species, database_name, schema_name, table_name, nucleotide) :
         
         # keep the longest isoform
         if (id in sequences) and (len(seq) < len(sequences[id])) :
+            continue
+
+        if seq == 'Sequenceunavailable' :
             continue
 
         sequences[id] = seq
@@ -225,15 +230,17 @@ def get_homology_info(species, database_name, schema_name, table_name, nucleotid
     # is this always correct?
     short_species_name = table_name.split('_')[0]
 
-    # this does not seem like a great idea, but until it breaks
-    # it will do...
+    # this does not seem like a great idea, but until it breaks it will do...
     if '_eg_' in table_name :
         paralog_name = short_species_name + '_eg_paralog_gene'
     else :
         paralog_name = short_species_name + '_paralog_ensembl_gene'
 
-    query2 = payload_homology % (schema_name, table_name, paralog_name)
+    #query2 = payload_homology % (schema_name if database_name != 'ensembl' else 'default', table_name, paralog_name)
+    query2 = payload_homology % (database_name + '_mart' if database_name != 'ensembl' else 'default', table_name, paralog_name)
     params2 = urllib.urlencode({ 'query' : query2 })
+
+    print query2
 
     # make api call
     try :

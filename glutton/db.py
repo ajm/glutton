@@ -354,7 +354,7 @@ class GluttonDB(object) :
             z.close()
         else :
             if self.q.running :
-                self.log.error("Could not align gene family (%s)" % job.input.id)
+                self.log.debug("Could not align gene family (%s)" % job.input.id)
 
         # release lock
         self.lock.release()

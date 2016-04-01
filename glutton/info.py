@@ -1,9 +1,10 @@
 import json
 import threading
 import collections
+import shutil
 
 from sys import stderr, exit
-from os.path import isfile, join, abspath
+from os.path import isfile, join, abspath, basename, isabs
 
 from glutton.db import GluttonDB
 from glutton.utils import get_log, md5, check_dir
@@ -73,24 +74,32 @@ class GluttonParameters(GluttonJSON) :
     def get_sample_ids(self) :
         return self.params['samples'].keys()
     
+    def contains(self, id) :
+        return id in self.params['samples']
+
     def add(self, contigfile, sampleid, species, bamfile=None, assembler=None, copy=False) :
         self.log.info("adding %s (%s, %s, %s, %s)" % (sampleid, species, contigfile, bamfile, assembler))
+
+        if self.contains(sampleid) :
+            self.log.warn("%s is already present, overwriting..." % sampleid)
+
         contigfile = self.copy(contigfile) if copy else abspath(contigfile)
         bamfile = self.copy(bamfile) if copy else abspath(bamfile) if bamfile else bamfile 
 
-        self.params['samples'][sampleid] = { 'contigs'   : contigfile,
-                                             'checksum'  : md5(contigfile),
-                                             'species'   : species,
-                                             'bam'       : bamfile,
-                                             'assembler' : assembler }
+        self.params['samples'][sampleid] = { 'contigs'          : contigfile,
+                                             'contigs_checksum' : md5(contigfile),
+                                             'species'          : species,
+                                             'bam'              : bamfile,
+                                             'bam_checksum'     : md5(bamfile) if bamfile else None,
+                                             'assembler'        : assembler }
 
     def copy(self, src) :
         data_dir = join(self.directory, 'data')
         check_dir(data_dir, create=True)
         dst = join(data_dir, basename(src))
-        self.log("cp %s %s" % (src, dst))
+        self.log.info("cp %s %s" % (src, dst))
         shutil.copy(src, dst)
-        return dst
+        return join('data', basename(src))
 
     def remove(self, sampleid) :
         self.log.info("removing %s" % sampleid)
@@ -106,8 +115,8 @@ class GluttonParameters(GluttonJSON) :
         if self.count() == 0 :
             print "No samples found..."
         else :
-            pretty_print_table(('SAMPLE','SPECIES','CONTIGS','MD5','BAM'), \
-                [ (k,v['species'], v['contigs'], v['checksum'], v['bam']) for k,v in self.params['samples'].iteritems() ])
+            pretty_print_table(('SAMPLE','SPECIES','ASSEMBLER','CONTIGS','MD5','BAM','MD5'), \
+                [ (k, v['species'], v['assembler'], self._abspath(v['contigs']), v['contigs_checksum'], self._abspath(v['bam']), v['bam_checksum']) for k,v in self.params['samples'].iteritems() ])
 
     def count(self) :
         return len(self.params['samples'])
@@ -121,15 +130,19 @@ class GluttonParameters(GluttonJSON) :
     def get_checksum(self, id) :
         return self.params['samples'][id]['checksum']
 
-    def get_contigs(self, id) :
-        return self.params['samples'][id]['contigs']
+    def _abspath(self, path) :
+        # "not path" is for case of None
+        return path if not path or isabs(path) else join(self.directory, path)
 
+    def get_contigs(self, id) :
+        return self._abspath(self.params['samples'][id]['contigs'])
+        
     def get_bam(self, id) :
-        return self.params['samples'][id]['bam']
+        return self._abspath(self.params['samples'][id]['bam'])
 
     def all(self) :
         for k,v in self.params['samples'].iteritems() :
-            yield GluttonSample(id=k, contigs=v['contigs'], species=v['species'], bam=v['bam'], checksum=v['checksum'])
+            yield GluttonSample(id=k, contigs=self._abspath(v['contigs']), species=v['species'], bam=self._abspath(v['bam']), checksum=v['checksum'])
 
 class GluttonInformation(GluttonJSON) :
     def __init__(self, alignments_dir, parameters, db) :

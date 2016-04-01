@@ -61,6 +61,7 @@ def handle_args(args) :
         par.add_argument('--database-password', type=str, default="", 
                          help='specify database password')
 
+    # XXX not used
     def add_input_files_options(par) :
         par.add_argument('-c', '--contigs', type=str, action='append',
                          help='fasta file containing contigs')
@@ -134,10 +135,10 @@ def handle_args(args) :
     
     default_project_dir = './glutton_out'
 
-    # sample options
+    # setup options
     parser_setup = subparsers.add_parser('setup', formatter_class=fmt,
                                           help='add/remove/list samples from a %s project' % glutton.__name__)
-    parser_setup.add_argument('--project', type=str, default=default_project_dir,
+    parser_setup.add_argument('-p', '--project', type=str, default=default_project_dir,
                                help='project directory (default=%s)' % default_project_dir)
 
     group = parser_setup.add_mutually_exclusive_group()
@@ -161,15 +162,16 @@ def handle_args(args) :
 
     parser_setup.add_argument('--copy', action='store_true',
                               help='copy FASTA and BAM files into project directory')
+    add_generic_options(parser_setup)
     parser_setup.set_defaults(setupcmd='list')
 
     # align options
     parser_align = subparsers.add_parser('align', formatter_class=fmt,
                               help='align contigs against reference transcript database')
     parser_align.add_argument('-g', '--reference', type=str,
-                              help='reference database, (normally a .glt file)')
-    parser_align.add_argument('--project', type=str, default=default_project_dir,
-                              help='project directory (default=%s)' % default_project_dir)
+                              help='reference database, (a .glt file)')
+    parser_align.add_argument('-p', '--project', type=str, default=default_project_dir,
+                              help='project directory')
 #    parser_align.add_argument('-a', '--alignments', type=str, default=default_alignment_dir,
 #                              help='output directory to store alignment files')
 
@@ -198,7 +200,7 @@ def handle_args(args) :
                              help='scaffold contigs together based on evolutionary alignment results')
     parser_scaf.add_argument('-g', '--reference', type=str,
                              help='reference database, (normally a .glt file)')
-    parser_scaf.add_argument(      '--project', type=str, default=default_project_dir,
+    parser_scaf.add_argument('-p', '--project', type=str, default=default_project_dir,
                               help='project directory (default=%s)' % default_project_dir)
     parser_scaf.add_argument(      '--assembler', type=str, default='none', metavar='ASSEMBLER', choices=supported_assemblers,
                              help='assembler used to assemble contigs, options are %s' % ', '.join(supported_assemblers))
@@ -273,7 +275,7 @@ def generic_options(args) :
     # length of bam files is either zero or same as contigs
     if hasattr(args, 'contigs') :
         if args.contigs :
-            if not args.label or not args.species :
+            if not args.sample or not args.species :
                 print >> stderr, "ERROR: you must specify one --sample and one --species argument per --contigs file!"
                 exit(1)
 

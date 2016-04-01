@@ -123,14 +123,14 @@ def setup_command(args) :
         gp.add(args.contigs, args.sample, args.species, args.bam, args.assembler, copy=args.copy)
         gp.flush()
 
-        print >> stderr, "added %s (%s contains %d samples)" (args.sample, args.project, gp.count())
+        print >> stderr, "added %s (%s contains %d samples)" % (args.sample, args.project, gp.count())
 
     elif args.setupcmd == 'remove' :
         gp = GluttonParameters(args.project, create=False)
         gp.remove(args.sample)
         gp.flush()
 
-        print >> stderr, "removed %s (%s contains %d samples)" (args.sample, args.project, gp.count())
+        print >> stderr, "removed %s (%s contains %d samples)" % (args.sample, args.project, gp.count())
 
     elif args.setupcmd == 'list' :
         gp = GluttonParameters(args.project, create=False)
