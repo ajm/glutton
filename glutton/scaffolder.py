@@ -12,7 +12,8 @@ from Bio import SeqIO
 import pysam
 
 from glutton.utils import get_log, check_dir
-from glutton.info import GluttonInformation
+from glutton.info import GluttonInformation, GluttonParameters
+from glutton.db import GluttonDB
 from glutton.assembler_output import AssemblerOutput
 
 
@@ -295,19 +296,26 @@ class Alignment2(Alignment) :
 class Scaffolder(object) :
     def __init__(self, top_level_directory, reference_fname, assembler_name, protein_identity, alignment_length, min_gene_coverage, testmode='none') :
         self.alignments_dir     = join(top_level_directory, 'alignments')
-        self.output_dir         = join(top_level_directory, 'scaffolds')
+        self.output_dir         = join(top_level_directory, 'postprocessing')
         self.protein_identity   = protein_identity
         self.alignment_length   = alignment_length
         self.min_gene_coverage  = min_gene_coverage
         self.testmode           = testmode
 
+        self.scaffold_dir       = join(self.output_dir, 'scaffolds')
+        self.genefamily_msa_dir = join(self.output_dir, 'genefamily_msa')
+        self.gene_msa_dir       = join(self.output_dir, 'gene_msa')
+
         check_dir(self.output_dir, create=True)
+        check_dir(self.scaffold_dir, create=True)
+        check_dir(self.genefamily_msa_dir, create=True)
+        check_dir(self.gene_msa_dir, create=True)
 
         self.log = get_log()
 
-        self.param = GluttonParameters(top_level_diretory)
+        self.param = GluttonParameters(top_level_directory)
         self.db = GluttonDB(reference_fname)
-        self.info = GluttonInformation(self.alignment_dir, self.param, self.db)
+        self.info = GluttonInformation(self.alignments_dir, self.param, self.db)
 
         # perhaps slightly overambitious to exit, just stick to a warning      
         pending,failures = self.info.num_alignments_not_done()
@@ -847,7 +855,7 @@ class Scaffolder(object) :
             if non_reference_seq != 0 :
                 counter += 1
 
-                with open(join(self.output_dir, "msa%d.fasta" % counter), 'w') as f :
+                with open(join(self.genefamily_msa_dir, "msa%d.fasta" % counter), 'w') as f :
                     for index,a in enumerate(new_alignment) :
                         print >> f, a.format_alignment("seq%d" % (index + 1))
 
@@ -869,8 +877,8 @@ class Scaffolder(object) :
         output_files = {}
         bam_files = {}
 
-        for label in self.info.get_sample_ids() :
-            fname = join(self.output_dir, label + '.fasta')
+        for label in self.param.get_sample_ids() :
+            fname = join(self.scaffold_dir, label + '.fasta')
             self.log.info("creating %s ..." % fname)
             output_files[label] = open(fname, 'w')
 
@@ -905,7 +913,7 @@ class Scaffolder(object) :
 
     def output_unscaffolded_contigs(self, output_files, aligned_contigs) :
 
-        for label in self.info.get_sample_ids() :
+        for label in self.param.get_sample_ids() :
             fout = output_files[label]
 
             for r in SeqIO.parse(self.param.get_contigs(label), 'fasta') :
