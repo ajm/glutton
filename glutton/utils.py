@@ -213,6 +213,9 @@ def duration_str(seconds) :
 
     return s
 
+def string_md5(s) :
+    return hashlib.md5(s).hexdigest()
+
 def md5(fname) :
     m = hashlib.md5()
     f = open(fname)

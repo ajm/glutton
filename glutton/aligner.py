@@ -9,7 +9,7 @@ from glutton.utils import tmpfile, num_threads, get_log, rm_f, check_dir, md5
 from glutton.queue import WorkQueue
 from glutton.job import PaganJob
 from glutton.genefamily import Gene, biopy_to_gene, seqlen
-from glutton.info import GluttonInformation
+from glutton.info import GluttonInformation, GluttonParameters
 
 from os.path import isfile, basename, join
 
@@ -40,8 +40,13 @@ class Aligner(object) :
 
         self.param = GluttonParameters(top_level_directory)
         self.db = GluttonDB(reference_fname)
-        self.info = GluttonInformation(self.directory, self.param, self.db)
-        
+        self.param.set_reference(self.db)
+
+        self.resume = self.param.able_to_resume()
+
+        self.info = GluttonInformation(self.directory, self.param, self.db, resume=self.resume)
+        self.param.set_full_checksum()
+
     def _read_contigs(self) :
         contigs = {}
 
@@ -49,7 +54,7 @@ class Aligner(object) :
             accepted = 0
             rejected = { 'length' : 0, 'ambiguous' : 0 }
 
-            fname = self.param.sample_to_contigs(label)
+            fname = self.param.get_contigs(label)
 
             for r in SeqIO.parse(fname, 'fasta') :
                 if len(r) < self.min_length :
@@ -65,8 +70,8 @@ class Aligner(object) :
                 contigs[qid] = biopy_to_gene(r, qid)
                 accepted += 1
 
-            self.log.info("%s: read %d contigs (rejected %d due to length < %d and %d due to 'N's)" %
-                (fname, accepted, rejected['length'], self.min_length, rejected['ambiguous']))
+            self.log.info("%s: read %d contigs (rejected %d due to length < %d)" % #and %d due to 'N's)" %
+                (fname, accepted, rejected['length'], self.min_length)) #, rejected['ambiguous']))
 
         return contigs
 
@@ -80,6 +85,7 @@ class Aligner(object) :
         rm_f(self.cleanup_files)
 
         self.info.flush()
+        self.param.flush()
 
     def _correct_strand(self, contig, strand) :
         if strand == '-' :

@@ -2,12 +2,13 @@ import json
 import threading
 import collections
 import shutil
+import operator
 
 from sys import stderr, exit
 from os.path import isfile, join, abspath, basename, isabs
 
 from glutton.db import GluttonDB
-from glutton.utils import get_log, md5, check_dir
+from glutton.utils import get_log, md5, check_dir, string_md5
 from glutton.table import pretty_print_table
 
 
@@ -63,7 +64,11 @@ class GluttonParameters(GluttonJSON) :
             self.params = { 'db_species'    : None,
                             'db_release'    : None,
                             'db_filename'   : None,
+
                             'db_checksum'   : None,
+                            'full_checksum' : None,
+                            'sample_checksum' : None,
+
                             'samples'       : {} }
 
     @property
@@ -76,6 +81,51 @@ class GluttonParameters(GluttonJSON) :
     
     def contains(self, id) :
         return id in self.params['samples']
+
+    def has_reference(self) :
+        return self.params['db_filename'] != None
+
+    def set_reference(self, db) :
+        self.params['db_species']  = db.species
+        self.params['db_release']  = db.release
+        self.params['db_checksum']  = db.checksum
+        self.params['db_filename']  = db.filename
+
+    def same_reference(self, db) :
+        return self.params['db_checksum'] == db.checksum
+
+    def generate_sample_checksum(self) :
+        return string_md5(" ".join(sorted(reduce(operator.add, [ (i['contigs_checksum'], str(i['bam_checksum'])) for i in self.params['samples'].values() ]))))
+
+    def get_sample_checksum(self) :
+        return self.params['sample_checksum']
+
+    def set_sample_checksum(self) :
+        self.params['sample_checksum'] = self.generate_sample_checksum()
+
+    def generate_full_checksum(self) :
+        checksums = [self.params['db_checksum'], self.params['sample_checksum']]
+
+        if None in checksums :
+            raise GluttonException('both db and sample checksums must be set')
+
+        return string_md5(" ".join(checksums))
+
+    def get_full_checksum(self) :
+        return self.params['full_checksum']
+
+    def set_full_checksum(self) :
+        self.params['full_checksum'] = self.generate_full_checksum()
+
+    def able_to_resume(self) :
+        if not self.get_full_checksum() :
+            return True
+
+        if self.get_full_checksum() == self.generate_full_checksum() :
+            return True
+
+        self.log.warn('unable to resume, samples and/or reference are different!')
+        return False
 
     def add(self, contigfile, sampleid, species, bamfile=None, assembler=None, copy=False) :
         self.log.info("adding %s (%s, %s, %s, %s)" % (sampleid, species, contigfile, bamfile, assembler))
@@ -92,6 +142,8 @@ class GluttonParameters(GluttonJSON) :
                                              'bam'              : bamfile,
                                              'bam_checksum'     : md5(bamfile) if bamfile else None,
                                              'assembler'        : assembler }
+
+        self.set_sample_checksum()
 
     def copy(self, src) :
         data_dir = join(self.directory, 'data')
@@ -145,7 +197,7 @@ class GluttonParameters(GluttonJSON) :
             yield GluttonSample(id=k, contigs=self._abspath(v['contigs']), species=v['species'], bam=self._abspath(v['bam']), checksum=v['checksum'])
 
 class GluttonInformation(GluttonJSON) :
-    def __init__(self, alignments_dir, parameters, db) :
+    def __init__(self, alignments_dir, parameters, db, resume=True) :
         self.directory = alignments_dir
         self.params = parameters
         self.db = db
@@ -163,7 +215,8 @@ class GluttonInformation(GluttonJSON) :
         self.query_gene_map = {}            # query id -> (gene id, +/-) or None
         self.genefamily_filename_map = {}   # gene family id -> filename
 
-        self.read_progress_files()
+        if resume :
+            self.read_progress_files()
 
     @property
     def contig_filename(self) :
