@@ -9,7 +9,7 @@ def _sanity_check_data(data, columns) :
 def _safe_len(datum) :
     if not datum :
         return 4
-    return len(datum)
+    return len(str(datum))
 
 # data is assumed to be a list of tuples
 def pretty_print_table(headings, data) :
