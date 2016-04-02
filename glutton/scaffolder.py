@@ -289,9 +289,9 @@ class Alignment(object) :
         return str((self.id, self.start, self.end, self.start_length, self.seq))
 
 class Alignment2(Alignment) :
-    def __init__(self, id, seq, contigs) :
+    def __init__(self, id, gene_name, seq, contigs) :
         start,end = sequence_limits(seq)
-        super(Alignment2, self).__init__(id, "", "", start, end, seq, "", "", contigs=contigs)
+        super(Alignment2, self).__init__(id, "", gene_name, start, end, seq, "", "", contigs=contigs)
 
 class Scaffolder(object) :
     def __init__(self, top_level_directory, reference_fname, assembler_name, protein_identity, alignment_length, min_gene_coverage, testmode='none') :
@@ -583,7 +583,7 @@ class Scaffolder(object) :
             a = alignments[0]
             a.trim_at_ATG(reference.start)
             a.truncate_at_stop_codon()
-            return Alignment2(a.species, a.seq, [a.contig_id])
+            return Alignment2(a.species, a.gene_name, a.seq, [a.contig_id])
 
         if self.testmode == 'none' :
             return self.consensus_for_msa_glutton(reference, alignments, bamfiles)
@@ -624,7 +624,7 @@ class Scaffolder(object) :
             a.trim_at_ATG(reference.start)
             a.truncate_at_stop_codon()
             #seq = self.trim_at_ATG(a.seq, reference.start)
-            return Alignment2(a.species, a.seq, [a.contig_id])
+            return Alignment2(a.species, a.gene_name, a.seq, [a.contig_id])
 
     #@profile
     def consensus_for_msa_glutton(self, reference, alignments, bamfiles) :
@@ -633,7 +633,7 @@ class Scaffolder(object) :
             a = alignments[0]
             a.trim_at_ATG(reference.start)
             a.truncate_at_stop_codon()
-            return Alignment2(a.species, a.seq, [a.contig_id])
+            return Alignment2(a.species, a.gene_name, a.seq, [a.contig_id])
 
         # this is buggy if within a species there are FAKE and real bam files
         coverage = []
@@ -680,7 +680,7 @@ class Scaffolder(object) :
                 s = s[:a.start] + tmp + s[a.end:]
 
         #s = self.trim_at_ATG(s, reference.start)
-        return Alignment2(alignments[0].species, s, [ a.contig_id for a in alignments ])
+        return Alignment2(alignments[0].species, alignments[0].gene_name, s, [ a.contig_id for a in alignments ])
 
     def remove_common_gaps(self, alignment) :
         indices = [-1, len(alignment[0].seq)]
@@ -802,7 +802,7 @@ class Scaffolder(object) :
             non_reference_seq = 0
 
             for gene_name,gene_seq in genes :
-                ref = Alignment2(self.db.species, gene_seq, [gene_name])
+                ref = Alignment2(self.db.species, gene_name, gene_seq, [gene_name])
                 new_alignment.append(ref)
 
                 #gene_prot = translate(ref.seq)
@@ -849,15 +849,20 @@ class Scaffolder(object) :
                     non_reference_seq += 1
 
 
-            self.remove_common_gaps(new_alignment)
-
-
             if non_reference_seq != 0 :
                 counter += 1
 
-                with open(join(self.genefamily_msa_dir, "msa%d.fasta" % counter), 'w') as f :
-                    for index,a in enumerate(new_alignment) :
-                        print >> f, a.format_alignment("seq%d" % (index + 1))
+                self.write_alignment(join(self.genefamily_msa_dir, "msa%d.fasta" % counter), new_alignment)
+
+                subalignments = defaultdict(list)
+
+                for a in new_alignment :
+                    subalignments[a.gene_name].append(a)
+
+                for k,v in subalignments.iteritems() :
+                    if len(v) > 1 :
+                        self.write_alignment(join(self.gene_msa_dir, "%s.fasta" % k), v)
+
 
             complete_files += 1
             stderr.write("\rINFO processed %d / %d alignments " % (complete_files, total_files))
@@ -869,6 +874,12 @@ class Scaffolder(object) :
         self.log.info("created %d multiple sequence alignments" % (counter + 1))
 
         return aligned_contigs
+
+    def write_alignment(self, fname, alignment) :
+        self.remove_common_gaps(alignment)
+        with open(fname, 'w') as f :
+            for index,a in enumerate(alignment) :
+                print >> f, a.format_alignment("seq%d" % (index + 1))
 
     def scaffold(self) :
         self.log.info("starting scaffolding")
