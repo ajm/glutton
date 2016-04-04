@@ -22,7 +22,7 @@ from glutton.assembler_output import AssemblerOutput
 
 
 
-DEBUG = True
+DEBUG = False
 
 class ScaffolderError(Exception) :
     pass
