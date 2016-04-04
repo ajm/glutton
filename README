@@ -1,13 +1,11 @@
-Glutton: Transcriptome Scaffolding using Evolutionary Alignment
+Glutton performs transcriptome scaffolding and postprocessing for comparative 
+analysis using evolutionary alignment.
 
+Glutton is distributed under the GPLv3 license (see COPYING)
 
-glutton check
+Installation instructions can be found at:
+    http://wasabiapp.org/software/glutton/installation/
 
-glutton build
-glutton align
-glutton scaffold
+Usage guidelines can be found at:
+    http://wasabiapp.org/software/glutton/tutorial/
 
-glutton list
-glutton pack
-glutton unpack
-glutton rm
