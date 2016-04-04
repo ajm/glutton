@@ -12,6 +12,8 @@ from sys import exit
 import time
 
 
+DEBUG = False
+
 class JobError(Exception) :
     pass
 
@@ -126,9 +128,9 @@ class PrankJob(Job) :
         return [self.infile] + self.prank.output_filenames(self.infile)
 
     def _run(self) :
+        global DEBUG
+
         self.infile = tmpfasta(self.sequences)
-
-
         start_time = time.time()
 
         result = self.prank.run(self.infile, self.infile)
@@ -136,7 +138,8 @@ class PrankJob(Job) :
         elapsed_time = time.time() - start_time
         q_count, q_sum, q_min, q_max, q_mean, q_sd = fasta_stats(self.infile)
 
-        threadsafe_io('prank_stats.txt', "%d %d %d %d %d %.3f %.3f %d" % \
+        if DEBUG :
+            threadsafe_io('prank_stats.txt', "%d %d %d %d %d %.3f %.3f %d" % \
                                             (result, \
                                              q_count, q_sum, q_min, q_max, q_mean, q_sd, \
                                              elapsed_time))
@@ -166,14 +169,18 @@ class BlastJob(Job) :
         return [self.query_fname, self.out_fname]
 
     def _run(self) :
+        global DEBUG
+
         self.query_fname = tmpfasta(self.queries)
         self.out_fname = tmpfile()
 
         result = self.blastx.run(self.query_fname, self.database, self.out_fname)
 
         q = dict([ (q.id, len(q)) for q in self.input ])
-        for br in self.results :
-            threadsafe_io('blastx_stats.txt', "%s %s %.3f %d %d %d %d %d %.3e %d %.3f" % \
+
+        if DEBUG :
+            for br in self.results :
+                threadsafe_io('blastx_stats.txt', "%s %s %.3f %d %d %d %d %d %.3e %d %.3f" % \
                                                                           (br.qseqid, 
                                                                            br.sseqid, 
                                                                            br.pident, 
@@ -227,6 +234,7 @@ class PaganJob(Job) :
         return [self.query_fname, self.alignment_fname, self.tree_fname] + self.pagan.output_filenames(self.out_fname)
 
     def _run(self) :
+        global DEBUG
 
         self.query_fname     = tmpfasta_orfs(self._queries, strand=True)
         #self.query_fname     = tmpfasta(self._queries)
@@ -249,7 +257,8 @@ class PaganJob(Job) :
         q_count, q_sum, q_min, q_max, q_mean, q_sd = fasta_stats(self.query_fname)
         a_count, a_sum, a_min, a_max, a_mean, a_sd = fasta_stats(self.alignment_fname)
 
-        threadsafe_io('pagan_stats.txt', "%s %d %d %d %d %d %.3f %.3f %d %d %d %d %.3f %.3f %d" % \
+        if DEBUG :
+            threadsafe_io('pagan_stats.txt', "%s %d %d %d %d %d %.3f %.3f %d %d %d %d %.3f %.3f %d" % \
                                             (self._genefamily, result, \
                                              q_count, q_sum, q_min, q_max, q_mean, q_sd, \
                                              a_count, a_sum, a_min, a_max, a_mean, a_sd, \
