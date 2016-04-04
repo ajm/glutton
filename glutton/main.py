@@ -268,6 +268,12 @@ def generic_options(args) :
     if hasattr(args, 'method') :
         set_ensembl_download_method(args.method)
 
+    # build does not work for ensembl-genomes if the method is "sql"
+    if hasattr(args, 'method') and args.method == "sql" :
+        if args.database != 'ensembl' :
+            print >> stderr, "ERROR: 'sql' does not work for Ensembl-genomes, use 'biomart' instead..."
+            exit(1)
+
     # contigs, labels, species, bam files
     # contigs, labels amd bam files must be unique
     #   apart from 'FAKE' bam file

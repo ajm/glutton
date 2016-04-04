@@ -338,7 +338,6 @@ def get_canonical_sequences(connection, species, release, nucleotide, genome_db_
     id2peptide = dict([ (r[0], (r[1], r[2])) for r in raw_results ])
     
     if DEBUG :
-        
         with open("%s_%d_%s_raw.txt" % (species, release, "nuc" if nucleotide else "pep"), 'w') as f :
             for r in raw_results :
                 print >> f, r
@@ -408,7 +407,7 @@ def download_database_sql(species, release=None, database_name='ensembl', nucleo
     homologies = get_homology_information(connection, species, release, genome_db_id)
 
     if not id2peptide or not homologies :
-        raise NoResultsError("no results returned - %s" % "nucleotide sequences are unavailable in ensembl-compara outside of most of the species in ensembl-main, use 'biomart' or 'pycogent' instead of 'sql'" if nucleotide else "maybe try again later?")
+        raise NoResultsError("no results returned - %s" % "nucleotide sequences are unavailable in ensembl-compara outside of most of the species in ensembl-main, use 'biomart' instead of 'sql'" if nucleotide else "maybe try again later?")
 
     return group_into_families(id2peptide, homologies)
 
