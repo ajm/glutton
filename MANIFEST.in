@@ -1,2 +1,2 @@
-include README glutton/*py scripts/glutton
+include README glutton/*py scripts/glutton binaries/*
 
