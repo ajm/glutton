@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 from setuptools import setup
+from glob import glob
+import sys
 
 setup(name='Glutton',
       version='0.1',
@@ -12,6 +14,16 @@ setup(name='Glutton',
       platforms=['*nix'],
       packages=['glutton'],
       install_requires=['biopython>=1.6', 'sqlalchemy', 'mysql-python', 'pysam'],
-      scripts=['scripts/glutton', 'binaries/prank', 'binaries/pagan', 'binaries/exonerate', 'binaries/blastx', 'binaries/bppphysamp'],
+      scripts=['scripts/glutton', \
+               'binaries/prank', \
+               'binaries/pagan', \
+               'binaries/exonerate', \
+               'binaries/mafft', \
+               'binaries/blastx', \
+               'binaries/bppphysamp', \
+               'binaries/bppancestor', \
+               'binaries/bppdist', \
+               'binaries/raxml' ],
+      data_files = [(sys.prefix + '/bin/lib', glob('./binaries/lib/*'))]
      )
 
