@@ -1,2 +1,2 @@
-include README COPYING glutton/*py scripts/glutton binaries/* binaries/lib/* requirements.txt
+include README COPYING glutton/*py scripts/glutton binaries/* binaries/lib/* requirements.txt setup.py setup_with_extras.py
 
