@@ -19,6 +19,7 @@ setup(name='Glutton',
                'binaries/pagan', \
                'binaries/exonerate', \
                'binaries/mafft', \
+               'binaries/makeblastdb', \
                'binaries/blastx', \
                'binaries/bppphysamp', \
                'binaries/bppancestor', \
