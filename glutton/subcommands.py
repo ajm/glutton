@@ -103,7 +103,8 @@ def scaffold_command(args) :
                       args.assembler,
                       args.identity,
                       args.length,
-                      args.coverage)
+                      args.coverage,
+                      do_not_trim=args.notrim)
 
     def _cleanup(signal, frame) :
         print >> stderr, "Killed by user, cleaning up..."

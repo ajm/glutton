@@ -294,12 +294,13 @@ class Alignment2(Alignment) :
         super(Alignment2, self).__init__(id, "", gene_name, start, end, seq, "", "", contigs=contigs)
 
 class Scaffolder(object) :
-    def __init__(self, top_level_directory, reference_fname, assembler_name, protein_identity, alignment_length, min_gene_coverage, testmode='none') :
+    def __init__(self, top_level_directory, reference_fname, assembler_name, protein_identity, alignment_length, min_gene_coverage, do_not_trim=False, testmode='none') :
         self.alignments_dir     = join(top_level_directory, 'alignments')
         self.output_dir         = join(top_level_directory, 'postprocessing')
         self.protein_identity   = protein_identity
         self.alignment_length   = alignment_length
         self.min_gene_coverage  = min_gene_coverage
+        self.trim               = not do_not_trim
         self.testmode           = testmode
 
         self.scaffold_dir       = join(self.output_dir, 'scaffolds')
@@ -582,7 +583,8 @@ class Scaffolder(object) :
         if len(alignments) == 1 :
             a = alignments[0]
             a.trim_at_ATG(reference.start)
-            a.truncate_at_stop_codon()
+            if self.trim :
+                a.truncate_at_stop_codon()
             return Alignment2(a.species, a.gene_name, a.seq, [a.contig_id])
 
         if self.testmode == 'none' :
@@ -622,7 +624,8 @@ class Scaffolder(object) :
 
             a = alignments[top_hit]
             a.trim_at_ATG(reference.start)
-            a.truncate_at_stop_codon()
+            if self.trim :
+                a.truncate_at_stop_codon()
             #seq = self.trim_at_ATG(a.seq, reference.start)
             return Alignment2(a.species, a.gene_name, a.seq, [a.contig_id])
 
@@ -632,7 +635,8 @@ class Scaffolder(object) :
         if len(alignments) == 1 :
             a = alignments[0]
             a.trim_at_ATG(reference.start)
-            a.truncate_at_stop_codon()
+            if self.trim :
+                a.truncate_at_stop_codon()
             return Alignment2(a.species, a.gene_name, a.seq, [a.contig_id])
 
         # this is buggy if within a species there are FAKE and real bam files
@@ -665,7 +669,8 @@ class Scaffolder(object) :
             #    tmp += (c1 if c1 not in ('-','N') else c2)
 
             a.trim_at_ATG(reference.start)
-            a.truncate_at_stop_codon()
+            if self.trim :
+                a.truncate_at_stop_codon()
             subseq = a.seq[a.start:a.end]
 
             if 'N' not in subseq :
