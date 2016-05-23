@@ -318,6 +318,11 @@ class Scaffolder(object) :
         self.db = GluttonDB(reference_fname)
         self.info = GluttonInformation(self.alignments_dir, self.param, self.db)
 
+        # check reference was the same
+        if not self.param.same_reference(self.db) :
+            self.log.error("current reference is %s, alignments were performed using %s" % (reference_fname, self.db.filename))
+            exit(1);
+
         # perhaps slightly overambitious to exit, just stick to a warning      
         pending,failures = self.info.num_alignments_not_done()
         if pending != 0 :
