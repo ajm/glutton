@@ -232,7 +232,7 @@ def get_homology_info(species, database_name, schema_name, table_name, nucleotid
 
     # this does not seem like a great idea, but until it breaks it will do...
     if '_eg_' in table_name :
-        paralog_name = short_species_name + '_eg_paralog_gene'
+        paralog_name = short_species_name + '_eg_paralog_ensembl_gene'
     else :
         paralog_name = short_species_name + '_paralog_ensembl_gene'
 
