@@ -320,8 +320,8 @@ class Scaffolder(object) :
 
         # check reference was the same
         if not self.param.same_reference(self.db) :
-            self.log.error("current reference is %s, alignments were performed using %s" % (reference_fname, self.db.filename))
-            exit(1);
+            self.log.warn("current reference is %s (checksum=%s), alignments were performed using %s (checksum=%s)" % (reference_fname, self.db.checksum, self.db.filename, self.param['db_checksum']))
+            #exit(1);
 
         # perhaps slightly overambitious to exit, just stick to a warning      
         pending,failures = self.info.num_alignments_not_done()
