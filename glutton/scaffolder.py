@@ -1,7 +1,7 @@
 from sys import exit, stderr, stdout
 from glob import glob
 from os import abort
-from os.path import join, getsize
+from os.path import join, getsize, exists
 from collections import defaultdict
 
 import re
@@ -936,6 +936,10 @@ class Scaffolder(object) :
 
         for label in self.param.get_sample_ids() :
             fout = output_files[label]
+
+            if not exists(self.param.get_contigs(label)) :
+                self.log.warn("could not find %s" % self.param.get_contigs(label))
+                continue
 
             for r in SeqIO.parse(self.param.get_contigs(label), 'fasta') :
 
